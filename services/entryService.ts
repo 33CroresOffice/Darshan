@@ -12,6 +12,7 @@ import type { CreateEntryResult, VerifyEntryResult, EntryStats } from "@/types";
 import { getDailyBookingCapPerUser, getTicketValidityMinutes } from "./settingsService";
 import { getSlotBookingCount, getUserSlotBookingCount } from "./slotService";
 import { getActiveSession } from "./slotSessionService";
+import { buildIdempotencyKey, getDeviceId } from "@/lib/offline";
 
 function generateEntryCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -714,13 +715,19 @@ export async function createDarshanTicket(
     attempts++;
   }
 
+  const idempotencyKey = buildIdempotencyKey("tk");
+  const deviceId = await getDeviceId();
+  const clientCreatedAt = new Date().toISOString();
+
   const qrCodeData = {
     entryCode,
     sebayatId,
     date: today,
     count: devoteeCount,
     slotId: slotId || null,
-    timestamp: new Date().toISOString(),
+    timestamp: clientCreatedAt,
+    idempotencyKey,
+    deviceId,
   };
 
   const { data: entry, error } = await supabase
@@ -738,6 +745,9 @@ export async function createDarshanTicket(
       created_by_sebayat: true,
       expires_at: expiresAt,
       entry_mode: entryMode,
+      idempotency_key: idempotencyKey,
+      device_id: deviceId,
+      client_created_at: clientCreatedAt,
     })
     .select("*, sebayat:sebayat_registrations(*, category:categories(*)), slot:darshan_slots(*)")
     .single();

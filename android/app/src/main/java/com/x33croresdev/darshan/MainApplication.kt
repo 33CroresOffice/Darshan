@@ -1,4 +1,4 @@
-package com.x33croresdev.boltexponativewind
+package com.x33croresdev.darshan
 
 import android.app.Application
 import android.content.res.Configuration

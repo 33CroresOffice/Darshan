@@ -1,4 +1,4 @@
-package com.x33croresdev.boltexponativewind
+package com.x33croresdev.darshan
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

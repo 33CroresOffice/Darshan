@@ -177,6 +177,14 @@ export interface GateEntry {
   created_by_sebayat: boolean;
   expires_at: string | null;
   entry_mode: EntryMode;
+  idempotency_key?: string | null;
+  offline_origin?: boolean;
+  device_id?: string | null;
+  client_created_at?: string | null;
+  west_actual_count?: number | null;
+  inner_actual_count?: number | null;
+  west_captured_at?: string | null;
+  inner_captured_at?: string | null;
   created_at: string;
   updated_at: string;
   sebayat?: SebayatRegistration;

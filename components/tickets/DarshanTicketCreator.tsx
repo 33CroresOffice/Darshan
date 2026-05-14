@@ -28,17 +28,22 @@ import { useSlotName } from "@/hooks/useSlotName";
 import {
   getSebayatDailyQuota,
   getSebayatPendingTickets,
-  getSebayatTodayTickets,
-  createDarshanTicket,
-  cancelDarshanTicket,
-  updateDarshanTicketCount,
   updateDarshanTicketCountByStaff,
   getTicketTimeRemaining,
   isTicketExpired,
 } from "@/services/entryService";
+import {
+  createTicketResilient,
+  cancelTicketResilient,
+  editTicketCountResilient,
+  getTodayTicketsResilient,
+  getEffectiveQuota,
+} from "@/services/offlineEntryService";
+import { connectivity, todayString } from "@/lib/offline";
 import { getAvailableSlotsForToday, getSlotQuota } from "@/services/slotService";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { SebayatQuota, GateEntry, SlotQuota, DarshanSlot, EntryMode } from "@/types/database";
+import { OfflineBanner } from "@/components/layout/OfflineBanner";
 
 interface DarshanTicketCreatorProps {
   sebayatRegistrationId: string;
@@ -81,25 +86,39 @@ export function DarshanTicketCreator({
 
   const loadData = useCallback(async () => {
     if (!sebayatRegistrationId) return;
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayString();
     try {
-      const [quotaData, pending, todayData, activeSlots] = await Promise.all([
-        getSebayatDailyQuota(sebayatRegistrationId),
-        getSebayatPendingTickets(sebayatRegistrationId),
-        getSebayatTodayTickets(sebayatRegistrationId),
-        getAvailableSlotsForToday(),
-      ]);
-      setQuota(quotaData);
+      const todayData = await getTodayTicketsResilient(sebayatRegistrationId);
+      const pending = todayData.filter((t) => t.status === "pending" || t.status === "registered");
       setPendingTickets(pending);
       setTodayTickets(todayData);
-      setAvailableSlots(activeSlots);
 
-      if (activeSlots.length > 0) {
-        const quotas = await Promise.all(
-          activeSlots.map((slot) => getSlotQuota(slot, sebayatRegistrationId, today))
-        );
-        setSlotQuotas(quotas);
+      if (connectivity.isOnline()) {
+        try {
+          const [quotaData, activeSlots] = await Promise.all([
+            getEffectiveQuota(sebayatRegistrationId),
+            getAvailableSlotsForToday(),
+          ]);
+          setQuota(quotaData);
+          setAvailableSlots(activeSlots);
+          if (activeSlots.length > 0) {
+            const quotas = await Promise.all(
+              activeSlots.map((slot) => getSlotQuota(slot, sebayatRegistrationId, today))
+            );
+            setSlotQuotas(quotas);
+          } else {
+            setSlotQuotas([]);
+          }
+        } catch {
+          const offlineQuota = await getEffectiveQuota(sebayatRegistrationId);
+          setQuota(offlineQuota);
+          setAvailableSlots([]);
+          setSlotQuotas([]);
+        }
       } else {
+        const offlineQuota = await getEffectiveQuota(sebayatRegistrationId);
+        setQuota(offlineQuota);
+        setAvailableSlots([]);
         setSlotQuotas([]);
       }
     } catch (err) {
@@ -127,10 +146,10 @@ export function DarshanTicketCreator({
     setCreating(true);
     setCreateError(null);
 
-    const result = await createDarshanTicket(
+    const result = await createTicketResilient(
       sebayatRegistrationId,
       devoteeCount,
-      selectedSlotId ?? undefined,
+      selectedSlotId,
       selectedEntryMode
     );
     if (result.success && result.entry) {
@@ -154,7 +173,7 @@ export function DarshanTicketCreator({
     setCancelling(confirmCancelTicket.id);
     setConfirmCancelTicket(null);
 
-    const result = await cancelDarshanTicket(confirmCancelTicket.id, sebayatRegistrationId);
+    const result = await cancelTicketResilient(confirmCancelTicket, sebayatRegistrationId);
     if (result.success) {
       await loadData();
       if (showTicketModal && selectedTicket?.id === confirmCancelTicket.id) {
@@ -178,7 +197,7 @@ export function DarshanTicketCreator({
 
     const result = staffUserId
       ? await updateDarshanTicketCountByStaff(editCountTicket.id, editCount, staffUserId)
-      : await updateDarshanTicketCount(editCountTicket.id, editCount, sebayatRegistrationId);
+      : await editTicketCountResilient(editCountTicket, sebayatRegistrationId, editCount);
 
     if (result.success) {
       setEditCountTicket(null);
@@ -523,7 +542,9 @@ export function DarshanTicketCreator({
                   )}
                   <View style={styles.qrContainer}>
                     <QRCode
-                      value={JSON.stringify({ entryCode: createdTicket.entry_code })}
+                      value={JSON.stringify(
+                        createdTicket.qr_code_data ?? { entryCode: createdTicket.entry_code }
+                      )}
                       size={180}
                     />
                   </View>
@@ -617,6 +638,7 @@ export function DarshanTicketCreator({
 
   return (
     <View style={styles.container}>
+      <OfflineBanner />
       <View style={styles.sectionHeader}>
         <Ticket size={20} color={COLORS.primary} />
         <Text style={styles.sectionTitle}>{t("supervisor.darshanTickets.title")}</Text>
@@ -1003,7 +1025,9 @@ export function DarshanTicketCreator({
                 <Text style={styles.modalTitle}>{t("supervisor.darshanTickets.ticketDetails")}</Text>
                 <View style={styles.qrContainer}>
                   <QRCode
-                    value={JSON.stringify({ entryCode: selectedTicket.entry_code })}
+                    value={JSON.stringify(
+                      selectedTicket.qr_code_data ?? { entryCode: selectedTicket.entry_code }
+                    )}
                     size={180}
                   />
                 </View>

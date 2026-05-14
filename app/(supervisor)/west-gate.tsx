@@ -52,6 +52,12 @@ import {
   getSebayatPendingTickets,
 } from "@/services/entryService";
 import { getActiveSession } from "@/services/slotSessionService";
+import {
+  resolveScannedTicket,
+  recordWestGateEventResilient,
+} from "@/services/offlineEntryService";
+import { connectivity } from "@/lib/offline";
+import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { SebayatRegistration, SebayatQuota, GateEntry, SlotSession } from "@/types/database";
 import type { CreateEntryResult } from "@/types";
@@ -189,8 +195,9 @@ export default function WestGateScreen() {
     scannerRef.current = true;
 
     try {
-      const entry = await searchEntryByQR(data);
-      if (entry) {
+      const resolved = await resolveScannedTicket(data);
+      if (resolved && resolved.source === "server" && resolved.ticket) {
+        const entry = resolved.ticket;
         if (entry.status !== "pending") {
           setError("This ticket has already been processed");
         } else if (isTicketExpired(entry)) {
@@ -198,6 +205,36 @@ export default function WestGateScreen() {
         } else {
           setSelectedEntry(entry);
         }
+        setShowScanner(false);
+        return;
+      }
+
+      if (resolved && resolved.source === "offline_payload" && resolved.idempotencyKey && resolved.declaredCount !== null && resolved.sebayatId) {
+        // Build a synthetic entry for the UI; supervisor will acknowledge offline
+        const synthesized: GateEntry = {
+          id: resolved.idempotencyKey,
+          entry_code: resolved.entryCode,
+          qr_code_data: null,
+          sebayat_id: resolved.sebayatId,
+          slot_id: null,
+          west_gate_supervisor_id: null,
+          inner_gate_supervisor_id: null,
+          declared_devotee_count: resolved.declaredCount,
+          verified_devotee_count: null,
+          status: "pending",
+          entry_date: new Date().toISOString().split("T")[0],
+          west_gate_entry_time: null,
+          inner_gate_verification_time: null,
+          notes: null,
+          created_by_sebayat: true,
+          expires_at: null,
+          entry_mode: "west_gate",
+          idempotency_key: resolved.idempotencyKey,
+          offline_origin: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        setSelectedEntry(synthesized);
         setShowScanner(false);
         return;
       }
@@ -240,6 +277,35 @@ export default function WestGateScreen() {
     setError(null);
 
     try {
+      const useOfflinePath =
+        entry.offline_origin || !connectivity.isOnline() || !!entry.idempotency_key;
+
+      if (useOfflinePath && entry.idempotency_key) {
+        const r = await recordWestGateEventResilient({
+          idempotencyKey: entry.idempotency_key,
+          supervisorId: profile.id,
+          actualCount: entry.declared_devotee_count,
+        });
+        if (r.success) {
+          const synthEntry: GateEntry = {
+            ...entry,
+            status: "registered",
+            west_gate_supervisor_id: profile.id,
+            west_gate_entry_time: new Date().toISOString(),
+            west_actual_count: entry.declared_devotee_count,
+          };
+          setResult({ success: true, message: r.message, entry: synthEntry });
+          await loadPendingTickets();
+          if (sebayat) {
+            const remaining = await getSebayatPendingTickets(sebayat.id);
+            setSebayatPendingTickets(remaining);
+          }
+        } else {
+          setError(r.message);
+        }
+        return;
+      }
+
       const result = await acknowledgeWestGateEntry(entry.id, profile.id);
       if (result.success) {
         setResult(result);
@@ -435,6 +501,8 @@ export default function WestGateScreen() {
             <Text style={styles.title}>{t('supervisor.westGate.title')}</Text>
             <Text style={styles.subtitle}>{t('supervisor.westGate.subtitle')}</Text>
           </View>
+
+          <OfflineBanner />
 
           <View style={styles.viewToggle}>
             <TouchableOpacity
@@ -748,6 +816,15 @@ export default function WestGateScreen() {
                     <Text style={styles.acknowledgeDetailLabel}>Remaining</Text>
                   </View>
                 </View>
+
+                {selectedEntry.offline_origin && (
+                  <View style={styles.offlineIssuedBanner}>
+                    <AlertCircle size={16} color={COLORS.warning} />
+                    <Text style={styles.offlineIssuedText}>
+                      Offline-issued ticket. Will sync when reconnected.
+                    </Text>
+                  </View>
+                )}
 
                 {isMarjanaMandap && (
                   <View style={styles.marjanaMandapBlockBanner}>
@@ -1473,6 +1550,23 @@ const styles = StyleSheet.create({
     width: 1,
     height: 48,
     backgroundColor: COLORS.border,
+  },
+  offlineIssuedBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.xs,
+    backgroundColor: COLORS.warning + "15",
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.warning + "30",
+  },
+  offlineIssuedText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.warning,
+    lineHeight: 18,
   },
   marjanaMandapBlockBanner: {
     flexDirection: "row",

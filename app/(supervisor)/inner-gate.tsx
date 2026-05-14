@@ -40,6 +40,12 @@ import {
   getPendingVerifications,
   getSebayatDailyQuota,
 } from "@/services/entryService";
+import {
+  resolveScannedTicket,
+  recordInnerGateEventResilient,
+} from "@/services/offlineEntryService";
+import { connectivity } from "@/lib/offline";
+import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { COLORS, SHADOWS, SPACING, RADIUS } from "@/constants/config";
 import type { GateEntry } from "@/types/database";
 import type { VerifyEntryResult } from "@/types";
@@ -64,6 +70,8 @@ export default function InnerGateScreen() {
   const [pendingList, setPendingList] = useState<GateEntry[]>([]);
   const [showPendingList, setShowPendingList] = useState(false);
   const [maxVerifiedCount, setMaxVerifiedCount] = useState<number>(999);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [offlineEntry, setOfflineEntry] = useState<{ idempotencyKey: string; entryCode: string; declaredCount: number; sebayatId: string } | null>(null);
 
   const handleSearch = async () => {
     if (!entryCode.trim()) {
@@ -106,8 +114,14 @@ export default function InnerGateScreen() {
     scannerRef.current = true;
 
     try {
-      const found = await searchEntryByQR(data);
-      if (found) {
+      const resolved = await resolveScannedTicket(data);
+      if (!resolved) {
+        setError(t('supervisor.innerGate.invalidQr'));
+        return;
+      }
+
+      if (resolved.source === "server" && resolved.ticket) {
+        const found = resolved.ticket;
         if (found.status === "verified") {
           setError(t('supervisor.innerGate.alreadyVerified'));
         } else if (found.status === "cancelled") {
@@ -118,10 +132,47 @@ export default function InnerGateScreen() {
           setError(t('supervisor.innerGate.flagged'));
         } else {
           setEntry(found);
+          setOfflineMode(false);
+          setOfflineEntry(null);
           setVerifiedCount(found.declared_devotee_count);
           loadEntryQuota(found);
         }
-        setShowScanner(false);
+      } else if (resolved.source === "offline_payload" && resolved.idempotencyKey && resolved.declaredCount !== null && resolved.sebayatId) {
+        // Trust the QR payload — supervisor can verify offline
+        setOfflineMode(true);
+        setOfflineEntry({
+          idempotencyKey: resolved.idempotencyKey,
+          entryCode: resolved.entryCode,
+          declaredCount: resolved.declaredCount,
+          sebayatId: resolved.sebayatId,
+        });
+        // Synthesize a minimal entry so the existing UI renders
+        const synthesized: GateEntry = {
+          id: resolved.idempotencyKey,
+          entry_code: resolved.entryCode,
+          qr_code_data: null,
+          sebayat_id: resolved.sebayatId,
+          slot_id: null,
+          west_gate_supervisor_id: null,
+          inner_gate_supervisor_id: null,
+          declared_devotee_count: resolved.declaredCount,
+          verified_devotee_count: null,
+          status: "registered",
+          entry_date: new Date().toISOString().split("T")[0],
+          west_gate_entry_time: null,
+          inner_gate_verification_time: null,
+          notes: null,
+          created_by_sebayat: true,
+          expires_at: null,
+          entry_mode: "west_gate",
+          idempotency_key: resolved.idempotencyKey,
+          offline_origin: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        setEntry(synthesized);
+        setVerifiedCount(resolved.declaredCount);
+        setMaxVerifiedCount(resolved.declaredCount + 50);
       } else {
         setError(t('supervisor.innerGate.invalidQr'));
       }
@@ -169,7 +220,54 @@ export default function InnerGateScreen() {
   };
 
   const handleVerify = async () => {
-    if (!entry || !profile) return;
+    if (!profile) return;
+
+    if (offlineMode && offlineEntry) {
+      const needsReason = verifiedCount !== offlineEntry.declaredCount;
+      if (needsReason && !adjustReason.trim()) {
+        setError(t('supervisor.innerGate.reasonRequired'));
+        return;
+      }
+      setSubmitting(true);
+      setError(null);
+      try {
+        const r = await recordInnerGateEventResilient({
+          idempotencyKey: offlineEntry.idempotencyKey,
+          supervisorId: profile.id,
+          verifiedCount,
+          reason: needsReason ? adjustReason.trim() : undefined,
+        });
+        const fakeEntry: GateEntry = {
+          id: offlineEntry.idempotencyKey,
+          entry_code: offlineEntry.entryCode,
+          qr_code_data: null,
+          sebayat_id: offlineEntry.sebayatId,
+          slot_id: null,
+          west_gate_supervisor_id: null,
+          inner_gate_supervisor_id: profile.id,
+          declared_devotee_count: offlineEntry.declaredCount,
+          verified_devotee_count: verifiedCount,
+          status: "verified",
+          entry_date: new Date().toISOString().split("T")[0],
+          west_gate_entry_time: null,
+          inner_gate_verification_time: new Date().toISOString(),
+          notes: needsReason ? adjustReason.trim() : null,
+          created_by_sebayat: true,
+          expires_at: null,
+          entry_mode: "west_gate",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        setResult({ success: r.success, message: r.message, entry: fakeEntry });
+      } catch (err) {
+        setError(t('supervisor.innerGate.searchFailed'));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (!entry) return;
 
     const needsReason = verifiedCount !== entry.declared_devotee_count;
     if (needsReason && !adjustReason.trim()) {
@@ -181,6 +279,26 @@ export default function InnerGateScreen() {
     setError(null);
 
     try {
+      // If we're offline, route through resilient path using the entry's idempotency key
+      if (!connectivity.isOnline() && entry.idempotency_key) {
+        const r = await recordInnerGateEventResilient({
+          idempotencyKey: entry.idempotency_key,
+          supervisorId: profile.id,
+          verifiedCount,
+          reason: needsReason ? adjustReason.trim() : undefined,
+        });
+        const merged: GateEntry = {
+          ...entry,
+          verified_devotee_count: verifiedCount,
+          inner_gate_supervisor_id: profile.id,
+          inner_gate_verification_time: new Date().toISOString(),
+          status: "verified",
+          notes: needsReason ? adjustReason.trim() : entry.notes,
+        };
+        setResult({ success: r.success, message: r.message, entry: merged });
+        return;
+      }
+
       const verifyResult = await verifyInnerGateEntry(
         entry.id,
         verifiedCount,
@@ -227,6 +345,8 @@ export default function InnerGateScreen() {
 
   const resetForm = () => {
     setEntry(null);
+    setOfflineMode(false);
+    setOfflineEntry(null);
     setEntryCode("");
     setVerifiedCount(0);
     setAdjustReason("");
@@ -336,6 +456,8 @@ export default function InnerGateScreen() {
           <Text style={styles.subtitle}>{t('supervisor.innerGate.subtitle')}</Text>
         </View>
 
+        <OfflineBanner />
+
         {error && (
           <View style={styles.errorCard}>
             <AlertCircle size={20} color={COLORS.error} />
@@ -418,6 +540,11 @@ export default function InnerGateScreen() {
               {entry.entry_mode === "marjana_mandap" && (
                 <View style={styles.directEntryBadge}>
                   <Text style={styles.directEntryBadgeText}>{t('supervisor.innerGate.marjanaMandapDirectEntry')}</Text>
+                </View>
+              )}
+              {(offlineMode || entry.offline_origin) && (
+                <View style={[styles.directEntryBadge, { backgroundColor: COLORS.warning + "20", borderColor: COLORS.warning + "40" }] }>
+                  <Text style={[styles.directEntryBadgeText, { color: COLORS.warning }]}>Offline-issued</Text>
                 </View>
               )}
               <TouchableOpacity

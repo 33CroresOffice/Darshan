@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "bolt-expo-nativewind",
-    "slug": "bolt-expo-nativewind",
+    "name": "Darshan",
+    "slug": "darshan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -25,7 +25,7 @@
       "typedRoutes": true
     },
     "android": {
-      "package": "com.x33croresdev.boltexponativewind"
+      "package": "com.x33croresdev.darshan"
     }
   }
 }
