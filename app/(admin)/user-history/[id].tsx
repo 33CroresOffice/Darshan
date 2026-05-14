@@ -8,11 +8,13 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { ArrowLeft, Calendar, Users, ChevronDown, ChevronUp, TrendingUp, TicketCheck, CircleCheck as CheckCircle2, Clock, Circle as XCircle, TriangleAlert as AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ArrowLeft, Calendar, Users, ChevronDown, ChevronUp, TrendingUp, TicketCheck, CircleCheck as CheckCircle2, Clock, Circle as XCircle, TriangleAlert as AlertTriangle, ChevronLeft, ChevronRight, Printer } from "lucide-react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { supabase } from "@/lib/supabase";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { GateEntry } from "@/types/database";
+import { getPrintTokenEnabled, getPrintTokenIncludePhoto } from "@/services/settingsService";
+import { printGateToken } from "@/services/printTokenService";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const FULL_MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -78,6 +80,9 @@ export default function UserHistoryScreen() {
   const [fromDate, setFromDate] = useState(toISO(thirtyDaysAgo));
   const [toDate, setToDate] = useState(toISO(today));
   const [calMonth, setCalMonth] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const [printTokenEnabled, setPrintTokenEnabled] = useState(false);
+  const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const fetchEntries = useCallback(async () => {
     if (!id) return;
@@ -99,7 +104,17 @@ export default function UserHistoryScreen() {
     setLoading(false);
   }, [id, fromDate, toDate]);
 
-  useFocusEffect(useCallback(() => { fetchEntries(); }, [fetchEntries]));
+  useFocusEffect(useCallback(() => {
+    fetchEntries();
+    getPrintTokenEnabled().then(setPrintTokenEnabled);
+    getPrintTokenIncludePhoto().then(setPrintTokenIncludePhoto);
+  }, [fetchEntries]));
+
+  const handlePrintEntry = async (entry: GateEntry) => {
+    setPrintingId(entry.id);
+    await printGateToken(entry, { includePhoto: printTokenIncludePhoto });
+    setPrintingId(null);
+  };
 
   const grouped = groupByDate(entries);
 
@@ -329,9 +344,21 @@ export default function UserHistoryScreen() {
                                 <TicketCheck size={14} color={COLORS.textSecondary} />
                                 <Text style={styles.entryCode}>{entry.entry_code}</Text>
                               </View>
-                              <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-                                <StatusIcon status={entry.status} size={12} />
-                                <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+                              <View style={styles.entryTopRight}>
+                                <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+                                  <StatusIcon status={entry.status} size={12} />
+                                  <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+                                </View>
+                                {printTokenEnabled && (
+                                  <TouchableOpacity
+                                    style={[styles.entryPrintBtn, printingId === entry.id && { opacity: 0.5 }]}
+                                    onPress={() => handlePrintEntry(entry)}
+                                    disabled={printingId === entry.id}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Printer size={14} color={COLORS.textSecondary} />
+                                  </TouchableOpacity>
+                                )}
                               </View>
                             </View>
 
@@ -648,6 +675,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  entryTopRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  entryPrintBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: COLORS.surfaceSecondary,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   entryCodeRow: {
     flexDirection: "row",

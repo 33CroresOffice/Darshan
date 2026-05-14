@@ -184,6 +184,58 @@ export async function updateApprovalRule(
   return { success: true, message: "Approval rule updated" };
 }
 
+export async function getPrintTokenEnabled(): Promise<boolean> {
+  const setting = await getSystemSetting("print_token_enabled");
+  if (setting) {
+    const v = setting.setting_value?.value ?? setting.setting_value;
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") return v !== "false";
+  }
+  return false;
+}
+
+export async function updatePrintTokenEnabled(
+  enabled: boolean,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .update({ setting_value: { value: enabled }, updated_by: userId })
+    .eq("setting_key", "print_token_enabled");
+
+  if (error) {
+    console.error("Error updating print_token_enabled:", error);
+    return { success: false, message: error.message };
+  }
+  return { success: true, message: "Print token setting updated" };
+}
+
+export async function getPrintTokenIncludePhoto(): Promise<boolean> {
+  const setting = await getSystemSetting("print_token_include_photo");
+  if (setting) {
+    const v = setting.setting_value?.value ?? setting.setting_value;
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") return v !== "false";
+  }
+  return false;
+}
+
+export async function updatePrintTokenIncludePhoto(
+  enabled: boolean,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .update({ setting_value: { value: enabled }, updated_by: userId })
+    .eq("setting_key", "print_token_include_photo");
+
+  if (error) {
+    console.error("Error updating print_token_include_photo:", error);
+    return { success: false, message: error.message };
+  }
+  return { success: true, message: "Print token photo setting updated" };
+}
+
 export async function getAllSettings(): Promise<SystemSetting[]> {
   const { data, error } = await supabase
     .from("system_settings")

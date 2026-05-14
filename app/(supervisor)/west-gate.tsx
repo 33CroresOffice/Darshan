@@ -12,6 +12,7 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -19,7 +20,6 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import {
   QrCode,
   Phone,
-  CreditCard,
   Search,
   X,
   User,
@@ -32,6 +32,8 @@ import {
   Clock,
   Ticket,
   List,
+  Printer,
+  Share2,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { AdminHeader } from "@/components/layout/AdminHeader";
@@ -39,7 +41,6 @@ import { useTranslation } from "react-i18next";
 import { useLocalizedNumber } from "@/hooks/useLocalizedNumber";
 import {
   searchSebayatByPhone,
-  searchSebayatByHealthCard,
   searchSebayatByQR,
   getSebayatDailyQuota,
   registerWestGateEntry,
@@ -56,6 +57,11 @@ import {
   resolveScannedTicket,
   recordWestGateEventResilient,
 } from "@/services/offlineEntryService";
+import {
+  getPrintTokenEnabled,
+  getPrintTokenIncludePhoto,
+} from "@/services/settingsService";
+import { printGateToken, shareGateTokenPDF, buildTokenHTML } from "@/services/printTokenService";
 import { connectivity } from "@/lib/offline";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
@@ -63,14 +69,14 @@ import type { SebayatRegistration, SebayatQuota, GateEntry, SlotSession } from "
 import type { CreateEntryResult } from "@/types";
 
 type ViewMode = "scan" | "pending";
-type SearchMode = "qr" | "phone" | "healthcard" | "code";
+type SearchMode = "qr" | "phone" | "code";
 
 export default function WestGateScreen() {
   const { profile } = useAuth();
   const { t } = useTranslation();
   const ln = useLocalizedNumber();
   const [viewMode, setViewMode] = useState<ViewMode>("scan");
-  const [searchMode, setSearchMode] = useState<SearchMode>("code");
+  const [searchMode, setSearchMode] = useState<SearchMode>("qr");
   const [searchValue, setSearchValue] = useState("");
   const [searching, setSearching] = useState(false);
   const [pendingTickets, setPendingTickets] = useState<GateEntry[]>([]);
@@ -87,6 +93,12 @@ export default function WestGateScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [activeSession, setActiveSession] = useState<SlotSession | null>(null);
   const [sebayatPendingTickets, setSebayatPendingTickets] = useState<GateEntry[]>([]);
+  const [printTokenEnabled, setPrintTokenEnabled] = useState(false);
+  const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false);
+  const [showTokenPreview, setShowTokenPreview] = useState(false);
+  const [tokenPreviewHtml, setTokenPreviewHtml] = useState("");
   const scannerRef = useRef<boolean>(false);
 
   const loadPendingTickets = useCallback(async () => {
@@ -103,6 +115,8 @@ export default function WestGateScreen() {
   useFocusEffect(
     useCallback(() => {
       loadPendingTickets();
+      getPrintTokenEnabled().then(setPrintTokenEnabled);
+      getPrintTokenIncludePhoto().then(setPrintTokenIncludePhoto);
     }, [loadPendingTickets])
   );
 
@@ -152,12 +166,15 @@ export default function WestGateScreen() {
       if (searchMode === "code") {
         const entry = await getEntryByCode(searchValue.trim().toUpperCase());
         if (entry) {
-          if (entry.status !== "pending") {
+          if (entry.entry_mode === "marjana_mandap") {
+            setError(t('supervisor.darshanTickets.entryModeWestGateNotAllowed'));
+          } else if (entry.status !== "pending") {
             setError(t('supervisor.westGate.alreadyProcessed'));
           } else if (isTicketExpired(entry)) {
             setError(t('supervisor.westGate.ticketExpired'));
           } else {
             setSelectedEntry(entry);
+            setShowAcknowledgeModal(true);
           }
         } else {
           setError(t('supervisor.westGate.noTicketFound'));
@@ -171,16 +188,6 @@ export default function WestGateScreen() {
           setSebayatPendingTickets(tickets);
         } else {
           setError(t('supervisor.westGate.noSebayatPhone'));
-        }
-      } else if (searchMode === "healthcard") {
-        const found = await searchSebayatByHealthCard(searchValue.trim());
-        if (found) {
-          setSebayat(found);
-          setDevoteeCount(1);
-          const tickets = await getSebayatPendingTickets(found.id);
-          setSebayatPendingTickets(tickets);
-        } else {
-          setError(t('supervisor.westGate.noSebayatHC'));
         }
       }
     } catch (err) {
@@ -198,12 +205,15 @@ export default function WestGateScreen() {
       const resolved = await resolveScannedTicket(data);
       if (resolved && resolved.source === "server" && resolved.ticket) {
         const entry = resolved.ticket;
-        if (entry.status !== "pending") {
+        if (entry.entry_mode === "marjana_mandap") {
+          setError(t('supervisor.darshanTickets.entryModeWestGateNotAllowed'));
+        } else if (entry.status !== "pending") {
           setError("This ticket has already been processed");
         } else if (isTicketExpired(entry)) {
           setError("This ticket has expired");
         } else {
           setSelectedEntry(entry);
+          setShowAcknowledgeModal(true);
         }
         setShowScanner(false);
         return;
@@ -235,6 +245,7 @@ export default function WestGateScreen() {
           updated_at: new Date().toISOString(),
         };
         setSelectedEntry(synthesized);
+        setShowAcknowledgeModal(true);
         setShowScanner(false);
         return;
       }
@@ -272,6 +283,10 @@ export default function WestGateScreen() {
 
   const handleAcknowledgeEntry = async (entry: GateEntry) => {
     if (!profile) return;
+    if (entry.entry_mode === "marjana_mandap") {
+      setError(t('supervisor.darshanTickets.entryModeWestGateNotAllowed'));
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -367,6 +382,31 @@ export default function WestGateScreen() {
     setError(null);
     setResult(null);
     setSebayatPendingTickets([]);
+    setShowAcknowledgeModal(false);
+    setShowTokenPreview(false);
+  };
+
+  const handleShowTokenPreview = async (entry: GateEntry) => {
+    setPrinting(true);
+    try {
+      const html = await buildTokenHTML(entry, { includePhoto: printTokenIncludePhoto });
+      setTokenPreviewHtml(html);
+      setShowTokenPreview(true);
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const handlePrint = async (entry: GateEntry) => {
+    setPrinting(true);
+    await printGateToken(entry, { includePhoto: printTokenIncludePhoto });
+    setPrinting(false);
+  };
+
+  const handleShare = async (entry: GateEntry) => {
+    setPrinting(true);
+    await shareGateTokenPDF(entry, { includePhoto: printTokenIncludePhoto });
+    setPrinting(false);
   };
 
   const adjustCount = (delta: number) => {
@@ -419,66 +459,6 @@ export default function WestGateScreen() {
     </TouchableOpacity>
   );
 
-  if (result?.success && result.entry) {
-    return (
-      <View style={styles.container}>
-        <ScrollView contentContainerStyle={styles.successContent}>
-          <View style={styles.successCard}>
-            <View style={styles.successIcon}>
-              <Check size={48} color="#fff" />
-            </View>
-            <Text style={styles.successTitle}>
-              {selectedEntry ? t('supervisor.westGate.entryAcknowledged') : t('supervisor.westGate.entryRegistered')}
-            </Text>
-            <Text style={styles.successSubtitle}>
-              {selectedEntry
-                ? t('supervisor.westGate.darshanProceed')
-                : t('supervisor.westGate.giveCode')}
-            </Text>
-
-            <View style={styles.codeContainer}>
-              <Text style={styles.codeLabel}>{t('supervisor.westGate.entryCode')}</Text>
-              <Text style={styles.codeValue}>{result.entry.entry_code}</Text>
-            </View>
-
-            <View style={styles.entryDetails}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('supervisor.westGate.darshan')}</Text>
-                <Text style={styles.detailValue}>
-                  {(result.entry.sebayat as any)?.full_name}
-                </Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('supervisor.westGate.devotees')}</Text>
-                <Text style={styles.detailValue}>
-                  {ln(result.entry.declared_devotee_count)}
-                </Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('supervisor.westGate.time')}</Text>
-                <Text style={styles.detailValue}>
-                  {result.entry.west_gate_entry_time
-                    ? new Date(result.entry.west_gate_entry_time).toLocaleTimeString(
-                        "en-IN",
-                        { hour: "2-digit", minute: "2-digit" }
-                      )
-                    : "-"}
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.newEntryButton}
-              onPress={resetForm}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.newEntryButtonText}>{t('supervisor.westGate.processNext')}</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -569,7 +549,7 @@ export default function WestGateScreen() {
                       onPress={() => {
                         if (!expired) {
                           setSelectedEntry(ticket);
-                          setViewMode("scan");
+                          setShowAcknowledgeModal(true);
                         }
                       }}
                       activeOpacity={0.7}
@@ -657,16 +637,6 @@ export default function WestGateScreen() {
                   }
                   label={t('supervisor.westGate.phone')}
                 />
-                <SearchModeButton
-                  mode="healthcard"
-                  icon={
-                    <CreditCard
-                      size={18}
-                      color={searchMode === "healthcard" ? "#fff" : COLORS.textSecondary}
-                    />
-                  }
-                  label={t('supervisor.westGate.hc')}
-                />
               </View>
 
               {searchMode === "qr" ? (
@@ -684,10 +654,8 @@ export default function WestGateScreen() {
                     <View style={styles.searchIcon}>
                       {searchMode === "code" ? (
                         <Ticket size={20} color={COLORS.primary} />
-                      ) : searchMode === "phone" ? (
-                        <Phone size={20} color={COLORS.primary} />
                       ) : (
-                        <CreditCard size={20} color={COLORS.primary} />
+                        <Phone size={20} color={COLORS.primary} />
                       )}
                     </View>
                     {searchMode === "phone" && (
@@ -696,17 +664,15 @@ export default function WestGateScreen() {
                     <TextInput
                       style={styles.searchInput}
                       value={searchValue}
-                      onChangeText={setSearchValue}
+                      onChangeText={(v) => setSearchValue(searchMode === "code" ? v.toUpperCase() : v)}
                       placeholder={
                         searchMode === "code"
                           ? t('supervisor.westGate.enterCode')
-                          : searchMode === "phone"
-                          ? t('supervisor.westGate.enterPhone')
-                          : t('supervisor.westGate.enterHC')
+                          : t('supervisor.westGate.enterPhone')
                       }
                       placeholderTextColor={COLORS.textMuted}
                       keyboardType={searchMode === "phone" ? "phone-pad" : "default"}
-                      maxLength={searchMode === "phone" ? 10 : searchMode === "code" ? 6 : 20}
+                      maxLength={searchMode === "phone" ? 10 : 6}
                       autoCapitalize="characters"
                     />
                     {searchValue.length > 0 && (
@@ -734,26 +700,7 @@ export default function WestGateScreen() {
             </>
           )}
 
-          {selectedEntry && (() => {
-            const slotName = (selectedEntry.slot as any)?.name as string | undefined;
-            const hasSlot = !!selectedEntry.slot_id;
-            const slotIsActive = hasSlot && activeSession?.slot_id === selectedEntry.slot_id;
-            const slotHasEnded = hasSlot && !slotIsActive && (activeSession === null || activeSession?.slot_id !== selectedEntry.slot_id);
-            const isMarjanaMandap = selectedEntry.entry_mode === "marjana_mandap";
-            const canAcknowledge = !isMarjanaMandap && (!hasSlot || slotIsActive);
-
-            let slotBlockMessage: string | null = null;
-            if (isMarjanaMandap) {
-              // Marjana Mandap tickets are blocked at West Gate — message shown in dedicated banner
-            }
-            if (hasSlot && !slotIsActive) {
-              if (activeSession) {
-                slotBlockMessage = `This ticket is for "${slotName}" but "${(activeSession.slot as any)?.name}" is currently active.`;
-              } else {
-                slotBlockMessage = `This ticket requires the "${slotName}" slot to be active. Ask a supervisor to start it.`;
-              }
-            }
-
+          {false && (() => {
             return (
               <View style={styles.acknowledgeCard}>
                 <View style={styles.acknowledgeHeader}>
@@ -870,11 +817,12 @@ export default function WestGateScreen() {
                 {t('supervisor.westGate.pendingTickets', { count: sebayatPendingTickets.length })}
               </Text>
               {sebayatPendingTickets.map((ticket) => {
+                const isMarjana = ticket.entry_mode === "marjana_mandap";
                 const expired = isTicketExpired(ticket);
                 const hasSlot = !!ticket.slot_id;
                 const slotIsActive = hasSlot && activeSession?.slot_id === ticket.slot_id;
                 const slotBlocked = hasSlot && !slotIsActive;
-                const isDisabled = expired || slotBlocked;
+                const isDisabled = expired || slotBlocked || isMarjana;
                 return (
                   <TouchableOpacity
                     key={ticket.id}
@@ -882,10 +830,12 @@ export default function WestGateScreen() {
                       styles.pendingCard,
                       expired && styles.pendingCardExpired,
                       slotBlocked && !expired && styles.pendingCardBlocked,
+                      isMarjana && styles.pendingCardMarjana,
                     ]}
                     onPress={() => {
                       if (!isDisabled) {
                         setSelectedEntry(ticket);
+                        setShowAcknowledgeModal(true);
                       }
                     }}
                     activeOpacity={0.7}
@@ -906,7 +856,11 @@ export default function WestGateScreen() {
                       </View>
                     </View>
                     <View style={styles.pendingRight}>
-                      {slotBlocked ? (
+                      {isMarjana ? (
+                        <View style={styles.marjanaMandapBadge}>
+                          <Text style={styles.marjanaMandapBadgeText}>Inner Gate</Text>
+                        </View>
+                      ) : slotBlocked ? (
                         <View style={styles.slotNotActiveBadge}>
                           <Text style={styles.slotNotActiveBadgeText}>{t('supervisor.westGate.slotNotActive')}</Text>
                         </View>
@@ -1113,6 +1067,247 @@ export default function WestGateScreen() {
           )}
         </View>
       </Modal>
+
+      {/* Acknowledge Entry Modal */}
+      <Modal
+        visible={showAcknowledgeModal && !!selectedEntry}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setShowAcknowledgeModal(false); setSelectedEntry(null); }}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => { setShowAcknowledgeModal(false); setSelectedEntry(null); }}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {selectedEntry && (() => {
+              const slotName = (selectedEntry.slot as any)?.name as string | undefined;
+              const hasSlot = !!selectedEntry.slot_id;
+              const slotIsActive = hasSlot && activeSession?.slot_id === selectedEntry.slot_id;
+              const isMarjanaMandap = selectedEntry.entry_mode === "marjana_mandap";
+              const canAcknowledge = !isMarjanaMandap && (!hasSlot || slotIsActive);
+              let slotBlockMessage: string | null = null;
+              if (hasSlot && !slotIsActive) {
+                slotBlockMessage = activeSession
+                  ? `This ticket is for "${slotName}" but "${(activeSession.slot as any)?.name}" is currently active.`
+                  : `This ticket requires the "${slotName}" slot to be active.`;
+              }
+              return (
+                <>
+                  <View style={styles.acknowledgeHeader}>
+                    <View style={styles.acknowledgeIcon}>
+                      <Ticket size={24} color={COLORS.primary} />
+                    </View>
+                    <View style={styles.acknowledgeHeaderInfo}>
+                      <Text style={styles.acknowledgeTitle}>{t('supervisor.westGate.acknowledgeTicket')}</Text>
+                      <Text style={styles.acknowledgeCode}>{selectedEntry.entry_code}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.closeButton} onPress={() => { setShowAcknowledgeModal(false); setSelectedEntry(null); }}>
+                      <X size={20} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.acknowledgeSebayat}>
+                    {(selectedEntry.sebayat as any)?.photo_url ? (
+                      <Image source={{ uri: (selectedEntry.sebayat as any).photo_url }} style={styles.acknowledgeSebayatPhoto} />
+                    ) : (
+                      <View style={styles.acknowledgeSebayatPhotoPlaceholder}>
+                        <User size={32} color={COLORS.textMuted} />
+                      </View>
+                    )}
+                    <View style={styles.acknowledgeSebayatInfo}>
+                      <Text style={styles.acknowledgeSebayatName}>{(selectedEntry.sebayat as any)?.full_name}</Text>
+                      <Text style={styles.acknowledgeSebayatCategory}>
+                        {slotName || (selectedEntry.sebayat as any)?.category?.name || "No Nijog"}
+                      </Text>
+                      {(selectedEntry.sebayat as any)?.temple_health_card_id && (
+                        <Text style={styles.acknowledgeSebayatHC}>HC: {(selectedEntry.sebayat as any).temple_health_card_id}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.acknowledgeDetails}>
+                    <View style={styles.acknowledgeDetailItem}>
+                      <Users size={20} color={COLORS.primary} />
+                      <Text style={styles.acknowledgeDetailValue}>{ln(selectedEntry.declared_devotee_count)}</Text>
+                      <Text style={styles.acknowledgeDetailLabel}>{t('supervisor.westGate.devotees')}</Text>
+                    </View>
+                    <View style={styles.acknowledgeDetailDivider} />
+                    <View style={styles.acknowledgeDetailItem}>
+                      <Clock size={20} color={COLORS.warning} />
+                      <Text style={styles.acknowledgeDetailValue}>{formatTimeRemaining(selectedEntry)}</Text>
+                      <Text style={styles.acknowledgeDetailLabel}>Remaining</Text>
+                    </View>
+                  </View>
+                  {selectedEntry.offline_origin && (
+                    <View style={styles.offlineIssuedBanner}>
+                      <AlertCircle size={16} color={COLORS.warning} />
+                      <Text style={styles.offlineIssuedText}>Offline-issued ticket. Will sync when reconnected.</Text>
+                    </View>
+                  )}
+                  {isMarjanaMandap && (
+                    <View style={styles.marjanaMandapBlockBanner}>
+                      <AlertCircle size={16} color="#0891b2" />
+                      <Text style={styles.marjanaMandapBlockText}>{t('supervisor.darshanTickets.entryModeWestGateNotAllowed')}</Text>
+                    </View>
+                  )}
+                  {slotBlockMessage && (
+                    <View style={styles.slotBlockBanner}>
+                      <AlertCircle size={16} color={COLORS.error} />
+                      <Text style={styles.slotBlockText}>{slotBlockMessage}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.acknowledgeButton, (!canAcknowledge || submitting) && styles.acknowledgeButtonDisabled]}
+                    onPress={() => canAcknowledge && handleAcknowledgeEntry(selectedEntry)}
+                    disabled={!canAcknowledge || submitting}
+                    activeOpacity={0.8}
+                  >
+                    {submitting ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Check size={20} color="#fff" />
+                        <Text style={styles.acknowledgeButtonText}>
+                          {isMarjanaMandap ? t('supervisor.darshanTickets.entryModeMarjanaMandap') : canAcknowledge ? t('supervisor.westGate.acknowledgeEntry') : t('supervisor.westGate.slotNotActive')}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Success / Result Modal */}
+      <Modal
+        visible={!!(result?.success && result.entry)}
+        transparent
+        animationType="fade"
+        onRequestClose={resetForm}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={resetForm}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {result?.entry && (
+              <>
+                <View style={styles.successModalHeader}>
+                  <View style={styles.successIcon}>
+                    <Check size={28} color="#fff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.successTitle}>{t('supervisor.westGate.entryAcknowledged')}</Text>
+                    <Text style={styles.successSubtitle}>{t('supervisor.westGate.darshanProceed')}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.closeButton} onPress={resetForm}>
+                    <X size={20} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.codeContainer}>
+                  <Text style={styles.codeLabel}>{t('supervisor.westGate.entryCode')}</Text>
+                  <Text style={styles.codeValue}>{result.entry.entry_code}</Text>
+                </View>
+                <View style={styles.entryDetails}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>{t('supervisor.westGate.darshan')}</Text>
+                    <Text style={styles.detailValue}>{(result.entry.sebayat as any)?.full_name}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>{t('supervisor.westGate.devotees')}</Text>
+                    <Text style={styles.detailValue}>{ln(result.entry.declared_devotee_count)}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>{t('supervisor.westGate.time')}</Text>
+                    <Text style={styles.detailValue}>
+                      {result.entry.west_gate_entry_time
+                        ? new Date(result.entry.west_gate_entry_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                        : "-"}
+                    </Text>
+                  </View>
+                </View>
+                {printTokenEnabled && (
+                  <View style={styles.printButtonsRow}>
+                    <TouchableOpacity
+                      style={[styles.printButton, printing && styles.printButtonDisabled]}
+                      onPress={() => handleShowTokenPreview(result.entry!)}
+                      disabled={printing}
+                      activeOpacity={0.8}
+                    >
+                      <Printer size={18} color={COLORS.primary} />
+                      <Text style={styles.printButtonText}>Print Token</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.shareButton, printing && styles.printButtonDisabled]}
+                      onPress={() => handleShare(result.entry!)}
+                      disabled={printing}
+                      activeOpacity={0.8}
+                    >
+                      <Share2 size={18} color={COLORS.textSecondary} />
+                      <Text style={styles.shareButtonText}>Share PDF</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <TouchableOpacity style={styles.newEntryButton} onPress={resetForm} activeOpacity={0.8}>
+                  <Text style={styles.newEntryButtonText}>{t('supervisor.westGate.processNext')}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Print Token Preview Modal */}
+      <Modal
+        visible={showTokenPreview}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTokenPreview(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowTokenPreview(false)}>
+          <Pressable style={[styles.modalCard, styles.modalCardTall]} onPress={() => {}}>
+            <View style={styles.tokenPreviewHeader}>
+              <Text style={styles.tokenPreviewTitle}>Token Preview</Text>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setShowTokenPreview(false)}>
+                <X size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flex: 1 }}>
+              {Platform.OS === "web" ? (
+                // @ts-ignore
+                <iframe
+                  srcDoc={tokenPreviewHtml}
+                  style={{ width: "100%", height: "100%", border: "none" }}
+                  title="Token Preview"
+                />
+              ) : (
+                <View style={styles.tokenPreviewNative}>
+                  <Text style={styles.tokenPreviewNativeText}>Token ready. Use the buttons below to print or share.</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.tokenPreviewActions}>
+              {result?.entry && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.printButton, { flex: 1 }, printing && styles.printButtonDisabled]}
+                    onPress={() => result.entry && handlePrint(result.entry)}
+                    disabled={printing}
+                    activeOpacity={0.8}
+                  >
+                    <Printer size={18} color={COLORS.primary} />
+                    <Text style={styles.printButtonText}>Print</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.shareButton, { flex: 1 }, printing && styles.printButtonDisabled]}
+                    onPress={() => result.entry && handleShare(result.entry)}
+                    disabled={printing}
+                    activeOpacity={0.8}
+                  >
+                    <Share2 size={18} color={COLORS.textSecondary} />
+                    <Text style={styles.shareButtonText}>Share PDF</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1277,6 +1472,11 @@ const styles = StyleSheet.create({
   pendingCardBlocked: {
     opacity: 0.6,
     borderColor: COLORS.textMuted,
+  },
+  pendingCardMarjana: {
+    opacity: 0.7,
+    borderColor: "#0891b230",
+    backgroundColor: "#0891b208",
   },
   pendingLeft: {
     flexDirection: "row",
@@ -1811,24 +2011,24 @@ const styles = StyleSheet.create({
     ...SHADOWS.medium,
   },
   successIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: COLORS.success,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 20,
   },
   successTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: "700",
     color: COLORS.text,
-    marginBottom: 6,
+    marginBottom: 2,
   },
   successSubtitle: {
-    fontSize: 15,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    marginBottom: 28,
+    marginBottom: 0,
     textAlign: "center",
   },
   codeContainer: {
@@ -1873,6 +2073,49 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.text,
   },
+  printButtonsRow: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    width: "100%",
+    marginBottom: SPACING.md,
+  },
+  printButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  shareButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  printButtonDisabled: {
+    opacity: 0.5,
+  },
+  printButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+  shareButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
   newEntryButton: {
     width: "100%",
     backgroundColor: COLORS.primary,
@@ -1884,6 +2127,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#fff",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: SPACING.lg,
+    width: "100%",
+    maxWidth: 480,
+    gap: 16,
+    ...SHADOWS.large,
+  },
+  modalCardTall: {
+    height: "80%",
+    padding: 0,
+    overflow: "hidden",
+  },
+  successModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 4,
+  },
+  tokenPreviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  tokenPreviewTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  tokenPreviewWebWrap: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+  },
+  tokenPreviewNative: {
+    padding: SPACING.xl,
+    alignItems: "center",
+  },
+  tokenPreviewNativeText: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+  },
+  tokenPreviewActions: {
+    flexDirection: "row",
+    gap: 12,
+    padding: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   scannerContainer: {
     flex: 1,

@@ -27,6 +27,8 @@ import {
   Smartphone,
   CreditCard,
   ShieldCheck,
+  Printer,
+  Image,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "@/services/authService";
@@ -42,6 +44,10 @@ import {
   updateTempleIdCardEnabled,
   getApprovalRule,
   updateApprovalRule,
+  getPrintTokenEnabled,
+  updatePrintTokenEnabled,
+  getPrintTokenIncludePhoto,
+  updatePrintTokenIncludePhoto,
   type OtpChannels,
   type ApprovalRule,
 } from "@/services/settingsService";
@@ -94,6 +100,11 @@ export default function SettingsScreen() {
   const [approvalRule, setApprovalRule] = useState<ApprovalRule>("all_admins");
   const [savingApprovalRule, setSavingApprovalRule] = useState(false);
 
+  const [printTokenEnabled, setPrintTokenEnabled] = useState(false);
+  const [savingPrintToken, setSavingPrintToken] = useState(false);
+  const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
+  const [savingPrintTokenPhoto, setSavingPrintTokenPhoto] = useState(false);
+
   const [slots, setSlots] = useState<DarshanSlot[]>([]);
   const [slotModalVisible, setSlotModalVisible] = useState(false);
   const [editingSlot, setEditingSlot] = useState<DarshanSlot | null>(null);
@@ -133,13 +144,15 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      const [maxDevoteesValue, ticketValidityValue, otpChannelsValue, slotsEnabledValue, templeIdCardEnabledValue, approvalRuleValue] = await Promise.all([
+      const [maxDevoteesValue, ticketValidityValue, otpChannelsValue, slotsEnabledValue, templeIdCardEnabledValue, approvalRuleValue, printTokenEnabledValue, printTokenPhotoValue] = await Promise.all([
         getDailyBookingCapPerUser(),
         getTicketValidityMinutes(),
         getOtpChannels(),
         getDarshanSlotsEnabled(),
         getTempleIdCardEnabled(),
         getApprovalRule(),
+        getPrintTokenEnabled(),
+        getPrintTokenIncludePhoto(),
       ]);
       setMaxDevotees(maxDevoteesValue.toString());
       setOriginalMaxDevotees(maxDevoteesValue);
@@ -149,6 +162,8 @@ export default function SettingsScreen() {
       setDarshanSlotsEnabled(slotsEnabledValue);
       setTempleIdCardEnabled(templeIdCardEnabledValue);
       setApprovalRule(approvalRuleValue);
+      setPrintTokenEnabled(printTokenEnabledValue);
+      setPrintTokenIncludePhoto(printTokenPhotoValue);
     } catch (err) {
       console.error("Failed to load settings:", err);
     } finally {
@@ -174,6 +189,27 @@ export default function SettingsScreen() {
       setTempleIdCardEnabled(value);
     }
     setSavingTempleIdCard(false);
+  };
+
+  const handleTogglePrintToken = async (value: boolean) => {
+    if (!profile?.id) return;
+    setSavingPrintToken(true);
+    const result = await updatePrintTokenEnabled(value, profile.id);
+    if (result.success) {
+      setPrintTokenEnabled(value);
+      if (!value) setPrintTokenIncludePhoto(false);
+    }
+    setSavingPrintToken(false);
+  };
+
+  const handleTogglePrintTokenPhoto = async (value: boolean) => {
+    if (!profile?.id) return;
+    setSavingPrintTokenPhoto(true);
+    const result = await updatePrintTokenIncludePhoto(value, profile.id);
+    if (result.success) {
+      setPrintTokenIncludePhoto(value);
+    }
+    setSavingPrintTokenPhoto(false);
   };
 
   const handleSelectApprovalRule = async (rule: ApprovalRule) => {
@@ -617,6 +653,61 @@ export default function SettingsScreen() {
             {saving ? "Saving..." : "Save Changes"}
           </Text>
         </TouchableOpacity>}
+
+        <Text style={styles.sectionLabel}>Print Token</Text>
+
+        <View style={styles.card}>
+          <View style={styles.featureToggleRow}>
+            <View style={[styles.settingIcon, { backgroundColor: printTokenEnabled ? "#ECFDF5" : COLORS.surfaceSecondary }]}>
+              <Printer size={22} color={printTokenEnabled ? COLORS.success : COLORS.textMuted} />
+            </View>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingTitle, !printTokenEnabled && styles.settingTitleDisabled]}>
+                Enable Print Token
+              </Text>
+              <Text style={styles.settingDescription}>
+                {printTokenEnabled
+                  ? "Print/share buttons are visible to supervisors, admins and superadmins"
+                  : "No print or share options are shown anywhere in the app"}
+              </Text>
+            </View>
+            <Switch
+              value={printTokenEnabled}
+              onValueChange={handleTogglePrintToken}
+              disabled={savingPrintToken}
+              trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
+              thumbColor={printTokenEnabled ? COLORS.primary : COLORS.textMuted}
+            />
+          </View>
+
+          {printTokenEnabled && (
+            <>
+              <View style={styles.printTokenDivider} />
+              <View style={[styles.featureToggleRow, { opacity: printTokenEnabled ? 1 : 0.4 }]}>
+                <View style={[styles.settingIcon, { backgroundColor: printTokenIncludePhoto ? "#EFF6FF" : COLORS.surfaceSecondary }]}>
+                  <Image size={22} color={printTokenIncludePhoto ? COLORS.primary : COLORS.textMuted} />
+                </View>
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingTitle, !printTokenIncludePhoto && styles.settingTitleDisabled]}>
+                    Include Sebayat Photo
+                  </Text>
+                  <Text style={styles.settingDescription}>
+                    {printTokenIncludePhoto
+                      ? "The registered photo will be embedded in the printed token"
+                      : "Token will be printed without the sebayat photo"}
+                  </Text>
+                </View>
+                <Switch
+                  value={printTokenIncludePhoto}
+                  onValueChange={handleTogglePrintTokenPhoto}
+                  disabled={savingPrintTokenPhoto || !printTokenEnabled}
+                  trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
+                  thumbColor={printTokenIncludePhoto ? COLORS.primary : COLORS.textMuted}
+                />
+              </View>
+            </>
+          )}
+        </View>
 
         <Text style={styles.sectionLabel}>Darshan Nijog</Text>
 
@@ -1421,6 +1512,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: SPACING.md,
     gap: SPACING.md,
+  },
+  printTokenDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginHorizontal: SPACING.md,
   },
   slotsMasterRow: {
     flexDirection: "row",

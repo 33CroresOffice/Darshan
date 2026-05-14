@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,17 @@ import {
   Image,
   Platform,
   Modal,
+  RefreshControl,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import {
   QrCode,
+  Ticket,
+  Phone,
+  List,
   Search,
   X,
   User,
@@ -27,6 +32,8 @@ import {
   Clock,
   Flag,
   ChevronRight,
+  Printer,
+  Share2,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { AdminHeader } from "@/components/layout/AdminHeader";
@@ -39,6 +46,8 @@ import {
   flagEntryDiscrepancy,
   getPendingVerifications,
   getSebayatDailyQuota,
+  searchSebayatByPhone,
+  getSebayatPendingTickets,
 } from "@/services/entryService";
 import {
   resolveScannedTicket,
@@ -46,6 +55,11 @@ import {
 } from "@/services/offlineEntryService";
 import { connectivity } from "@/lib/offline";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
+import {
+  getPrintTokenEnabled,
+  getPrintTokenIncludePhoto,
+} from "@/services/settingsService";
+import { printGateToken, shareGateTokenPDF } from "@/services/printTokenService";
 import { COLORS, SHADOWS, SPACING, RADIUS } from "@/constants/config";
 import type { GateEntry } from "@/types/database";
 import type { VerifyEntryResult } from "@/types";
@@ -68,13 +82,57 @@ export default function InnerGateScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const scannerRef = useRef<boolean>(false);
   const [pendingList, setPendingList] = useState<GateEntry[]>([]);
-  const [showPendingList, setShowPendingList] = useState(false);
   const [maxVerifiedCount, setMaxVerifiedCount] = useState<number>(999);
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineEntry, setOfflineEntry] = useState<{ idempotencyKey: string; entryCode: string; declaredCount: number; sebayatId: string } | null>(null);
+  const [printTokenEnabled, setPrintTokenEnabled] = useState(false);
+  const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [searchMode, setSearchMode] = useState<"qr" | "code" | "phone">("qr");
+  const [viewMode, setViewMode] = useState<"scan" | "pending">("scan");
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [phoneValue, setPhoneValue] = useState("");
+
+  const loadPendingList = useCallback(async () => {
+    setLoadingPending(true);
+    try {
+      const pending = await getPendingVerifications();
+      setPendingList(pending);
+    } finally {
+      setLoadingPending(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPendingList();
+      getPrintTokenEnabled().then(setPrintTokenEnabled);
+      getPrintTokenIncludePhoto().then(setPrintTokenIncludePhoto);
+    }, [loadPendingList])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadPendingList();
+    setRefreshing(false);
+  };
+
+  const handlePrint = async (e: GateEntry) => {
+    setPrinting(true);
+    await printGateToken(e, { includePhoto: printTokenIncludePhoto });
+    setPrinting(false);
+  };
+
+  const handleShare = async (e: GateEntry) => {
+    setPrinting(true);
+    await shareGateTokenPDF(e, { includePhoto: printTokenIncludePhoto });
+    setPrinting(false);
+  };
 
   const handleSearch = async () => {
-    if (!entryCode.trim()) {
+    const searchVal = searchMode === "phone" ? phoneValue.trim() : entryCode.trim();
+    if (!searchVal) {
       setError(t('supervisor.innerGate.emptyCode'));
       return;
     }
@@ -84,7 +142,27 @@ export default function InnerGateScreen() {
     setEntry(null);
 
     try {
-      const found = await getEntryByCode(entryCode.trim().toUpperCase());
+      if (searchMode === "phone") {
+        const sebayat = await searchSebayatByPhone(searchVal);
+        if (!sebayat) {
+          setError(t('supervisor.westGate.noSebayatPhone'));
+          return;
+        }
+        const tickets = await getSebayatPendingTickets(sebayat.id);
+        const activeTicket = tickets.find(
+          (tk) => tk.status === "registered" || tk.status === "acknowledged"
+        );
+        if (activeTicket) {
+          setEntry(activeTicket);
+          setVerifiedCount(activeTicket.declared_devotee_count);
+          loadEntryQuota(activeTicket);
+        } else {
+          setError(t('supervisor.innerGate.notFound'));
+        }
+        return;
+      }
+
+      const found = await getEntryByCode(searchVal.toUpperCase());
       if (found) {
         if (found.status === "verified") {
           setError(t('supervisor.innerGate.alreadyVerified'));
@@ -206,16 +284,10 @@ export default function InnerGateScreen() {
     }
   };
 
-  const loadPendingList = async () => {
-    const pending = await getPendingVerifications();
-    setPendingList(pending);
-    setShowPendingList(true);
-  };
-
   const selectPendingEntry = (selectedEntry: GateEntry) => {
     setEntry(selectedEntry);
     setVerifiedCount(selectedEntry.declared_devotee_count);
-    setShowPendingList(false);
+    setViewMode("scan");
     loadEntryQuota(selectedEntry);
   };
 
@@ -348,6 +420,7 @@ export default function InnerGateScreen() {
     setOfflineMode(false);
     setOfflineEntry(null);
     setEntryCode("");
+    setPhoneValue("");
     setVerifiedCount(0);
     setAdjustReason("");
     setError(null);
@@ -432,6 +505,29 @@ export default function InnerGateScreen() {
               )}
             </View>
 
+            {printTokenEnabled && result.entry.status === "verified" && (
+              <View style={styles.printButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.printButton, printing && styles.printButtonDisabled]}
+                  onPress={() => handlePrint(result.entry!)}
+                  disabled={printing}
+                  activeOpacity={0.8}
+                >
+                  <Printer size={18} color={COLORS.primary} />
+                  <Text style={styles.printButtonText}>Print Receipt</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.shareButton, printing && styles.printButtonDisabled]}
+                  onPress={() => handleShare(result.entry!)}
+                  disabled={printing}
+                  activeOpacity={0.8}
+                >
+                  <Share2 size={18} color={COLORS.textSecondary} />
+                  <Text style={styles.shareButtonText}>Share PDF</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <TouchableOpacity
               style={styles.newEntryButton}
               onPress={resetForm}
@@ -447,9 +543,20 @@ export default function InnerGateScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardView}
+      >
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+          />
+        }
       >
         <View style={styles.header}>
           <Text style={styles.title}>{t('supervisor.innerGate.title')}</Text>
@@ -458,78 +565,187 @@ export default function InnerGateScreen() {
 
         <OfflineBanner />
 
+        <View style={styles.viewToggle}>
+          <TouchableOpacity
+            style={[styles.toggleButton, viewMode === "scan" && styles.toggleButtonActive]}
+            onPress={() => setViewMode("scan")}
+          >
+            <QrCode size={18} color={viewMode === "scan" ? "#fff" : COLORS.textSecondary} />
+            <Text style={[styles.toggleText, viewMode === "scan" && styles.toggleTextActive]}>
+              {t('supervisor.westGate.scanSearch')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleButton, viewMode === "pending" && styles.toggleButtonActive]}
+            onPress={() => setViewMode("pending")}
+          >
+            <List size={18} color={viewMode === "pending" ? "#fff" : COLORS.textSecondary} />
+            <Text style={[styles.toggleText, viewMode === "pending" && styles.toggleTextActive]}>
+              {t('supervisor.westGate.pendingTab', { count: pendingList.length })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {error && (
           <View style={styles.errorCard}>
             <AlertCircle size={20} color={COLORS.error} />
             <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={() => setError(null)}>
+              <X size={18} color={COLORS.error} />
+            </TouchableOpacity>
           </View>
         )}
 
-        {!entry && (
-          <>
-            <View style={styles.searchActions}>
-              <TouchableOpacity
-                style={styles.scanButton}
-                onPress={openScanner}
-                activeOpacity={0.8}
-              >
-                <Camera size={28} color={COLORS.primary} />
-                <Text style={styles.scanButtonText}>{t('supervisor.innerGate.scanQrCode')}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.listButton}
-                onPress={loadPendingList}
-                activeOpacity={0.8}
-              >
-                <Clock size={24} color={COLORS.warning} />
-                <Text style={styles.listButtonText}>{t('supervisor.innerGate.viewPending')}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{t('supervisor.innerGate.orEnterCode')}</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <View style={styles.searchCard}>
-              <View style={styles.searchInputContainer}>
-                <TextInput
-                  style={styles.searchInput}
-                  value={entryCode}
-                  onChangeText={(text) => setEntryCode(text.toUpperCase())}
-                  placeholder={t('supervisor.innerGate.enterCode')}
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="characters"
-                  maxLength={6}
-                />
-                {entryCode.length > 0 && (
-                  <TouchableOpacity
-                    onPress={() => setEntryCode("")}
-                    style={styles.clearButton}
-                  >
-                    <X size={18} color={COLORS.textMuted} />
-                  </TouchableOpacity>
-                )}
+        {viewMode === "pending" ? (
+          <View style={styles.pendingSection}>
+            {pendingList.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Clock size={48} color={COLORS.textMuted} />
+                <Text style={styles.emptyTitle}>{t('supervisor.innerGate.noPendingEntries')}</Text>
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.searchButton,
-                  searching && styles.searchButtonDisabled,
-                ]}
-                onPress={handleSearch}
-                disabled={searching}
-                activeOpacity={0.8}
-              >
-                <Search size={20} color="#fff" />
-                <Text style={styles.searchButtonText}>
-                  {searching ? t('common.searching') : t('supervisor.innerGate.findEntry')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
+            ) : (
+              pendingList.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.pendingCard}
+                  onPress={() => selectPendingEntry(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.pendingLeft}>
+                    {(item.sebayat as any)?.photo_url ? (
+                      <Image
+                        source={{ uri: (item.sebayat as any).photo_url }}
+                        style={styles.pendingPhoto}
+                      />
+                    ) : (
+                      <View style={styles.pendingPhotoPlaceholder}>
+                        <User size={24} color={COLORS.textMuted} />
+                      </View>
+                    )}
+                    <View style={styles.pendingInfo}>
+                      <Text style={styles.pendingName}>{(item.sebayat as any)?.full_name || "Unknown"}</Text>
+                      <Text style={styles.pendingCategory}>{(item.sebayat as any)?.category?.name || "No Nijog"}</Text>
+                      <View style={styles.pendingMeta}>
+                        <Users size={12} color={COLORS.textSecondary} />
+                        <Text style={styles.pendingMetaText}>{item.declared_devotee_count} devotees</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.pendingRight}>
+                    <Text style={styles.pendingCode}>{item.entry_code}</Text>
+                    <View style={styles.pendingTimeRow}>
+                      <Clock size={12} color={COLORS.warning} />
+                      <Text style={styles.pendingTime}>
+                        {new Date(item.west_gate_entry_time ?? item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                    </View>
+                  </View>
+                  <ChevronRight size={20} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        ) : (
+          <>
+            {!entry && (
+              <>
+                <View style={styles.modeSelector}>
+                  <TouchableOpacity
+                    style={[styles.modeButton, searchMode === "code" && styles.modeButtonActive]}
+                    onPress={() => { setSearchMode("code"); setEntryCode(""); }}
+                    activeOpacity={0.8}
+                  >
+                    <Ticket size={18} color={searchMode === "code" ? "#fff" : COLORS.textSecondary} />
+                    <Text style={[styles.modeButtonText, searchMode === "code" && styles.modeButtonTextActive]}>
+                      {t('supervisor.westGate.code')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modeButton, searchMode === "qr" && styles.modeButtonActive]}
+                    onPress={() => setSearchMode("qr")}
+                    activeOpacity={0.8}
+                  >
+                    <QrCode size={18} color={searchMode === "qr" ? "#fff" : COLORS.textSecondary} />
+                    <Text style={[styles.modeButtonText, searchMode === "qr" && styles.modeButtonTextActive]}>
+                      {t('supervisor.westGate.qr')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modeButton, searchMode === "phone" && styles.modeButtonActive]}
+                    onPress={() => { setSearchMode("phone"); setPhoneValue(""); }}
+                    activeOpacity={0.8}
+                  >
+                    <Phone size={18} color={searchMode === "phone" ? "#fff" : COLORS.textSecondary} />
+                    <Text style={[styles.modeButtonText, searchMode === "phone" && styles.modeButtonTextActive]}>
+                      {t('supervisor.westGate.phone')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {searchMode === "qr" ? (
+                  <TouchableOpacity
+                    style={styles.scanButton}
+                    onPress={openScanner}
+                    activeOpacity={0.8}
+                  >
+                    <Camera size={32} color={COLORS.primary} />
+                    <Text style={styles.scanButtonText}>{t('supervisor.westGate.tapToScanQr')}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.searchCard}>
+                    <View style={styles.searchInputContainer}>
+                      <View style={styles.searchIcon}>
+                        {searchMode === "code" ? (
+                          <Ticket size={20} color={COLORS.primary} />
+                        ) : (
+                          <Phone size={20} color={COLORS.primary} />
+                        )}
+                      </View>
+                      {searchMode === "phone" && (
+                        <Text style={styles.phonePrefix}>+91</Text>
+                      )}
+                      <TextInput
+                        style={styles.searchInput}
+                        value={searchMode === "phone" ? phoneValue : entryCode}
+                        onChangeText={(text) =>
+                          searchMode === "phone"
+                            ? setPhoneValue(text)
+                            : setEntryCode(text.toUpperCase())
+                        }
+                        placeholder={
+                          searchMode === "code"
+                            ? t('supervisor.westGate.enterCode')
+                            : t('supervisor.westGate.enterPhone')
+                        }
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType={searchMode === "phone" ? "phone-pad" : "default"}
+                        maxLength={searchMode === "phone" ? 10 : 6}
+                        autoCapitalize={searchMode === "phone" ? "none" : "characters"}
+                      />
+                      {(searchMode === "phone" ? phoneValue : entryCode).length > 0 && (
+                        <TouchableOpacity
+                          onPress={() => searchMode === "phone" ? setPhoneValue("") : setEntryCode("")}
+                          style={styles.clearButton}
+                        >
+                          <X size={18} color={COLORS.textMuted} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.searchButton, searching && styles.searchButtonDisabled]}
+                      onPress={handleSearch}
+                      disabled={searching}
+                      activeOpacity={0.8}
+                    >
+                      <Search size={20} color="#fff" />
+                      <Text style={styles.searchButtonText}>
+                        {searching ? t('common.searching') : t('common.search')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
 
         {entry && (
           <View style={styles.entryCard}>
@@ -699,8 +915,12 @@ export default function InnerGateScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          )}
+        </>
         )}
+
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal visible={showScanner} animationType="slide">
         <View style={styles.scannerContainer}>
@@ -744,58 +964,6 @@ export default function InnerGateScreen() {
               </TouchableOpacity>
             </View>
           )}
-        </View>
-      </Modal>
-
-      <Modal visible={showPendingList} animationType="slide">
-        <View style={styles.pendingContainer}>
-          <View style={styles.pendingHeader}>
-            <Text style={styles.pendingTitle}>{t('supervisor.innerGate.pendingVerifications')}</Text>
-            <TouchableOpacity
-              style={styles.pendingClose}
-              onPress={() => setShowPendingList(false)}
-            >
-              <X size={24} color={COLORS.text} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.pendingContent}>
-            {pendingList.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Clock size={48} color={COLORS.textMuted} />
-                <Text style={styles.emptyText}>{t('supervisor.innerGate.noPendingEntries')}</Text>
-              </View>
-            ) : (
-              pendingList.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.pendingItem}
-                  onPress={() => selectPendingEntry(item)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.pendingItemCode}>
-                    <Text style={styles.pendingItemCodeText}>
-                      {item.entry_code}
-                    </Text>
-                  </View>
-                  <View style={styles.pendingItemInfo}>
-                    <Text style={styles.pendingItemName}>
-                      {(item.sebayat as any)?.full_name || "Unknown"}
-                    </Text>
-                    <Text style={styles.pendingItemCount}>
-                      {t('supervisor.innerGate.devoteeCount', { count: item.declared_devotee_count })}
-                    </Text>
-                  </View>
-                  <Text style={styles.pendingItemTime}>
-                    {new Date(item.west_gate_entry_time).toLocaleTimeString(
-                      "en-IN",
-                      { hour: "2-digit", minute: "2-digit" }
-                    )}
-                  </Text>
-                  <ChevronRight size={20} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              ))
-            )}
-          </ScrollView>
         </View>
       </Modal>
 
@@ -897,55 +1065,171 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  searchActions: {
+  keyboardView: {
+    flex: 1,
+  },
+  viewToggle: {
     flexDirection: "row",
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    padding: 4,
+    marginBottom: 16,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  toggleButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: RADIUS.sm,
+  },
+  toggleButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  toggleTextActive: {
+    color: "#fff",
+  },
+  pendingSection: {
     gap: 12,
-    marginBottom: 20,
+  },
+  pendingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 12,
+    ...SHADOWS.small,
+  },
+  pendingLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  pendingPhoto: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+  },
+  pendingPhotoPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceSecondary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pendingInfo: {
+    flex: 1,
+  },
+  pendingName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  pendingCategory: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: "500",
+    marginTop: 1,
+  },
+  pendingMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 3,
+  },
+  pendingMetaText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  pendingRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  pendingCode: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+    letterSpacing: 1,
+  },
+  pendingTimeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  pendingTime: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: COLORS.warning,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 60,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+  },
+  modeSelector: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 12,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modeButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  modeButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  modeButtonTextActive: {
+    color: "#fff",
   },
   scanButton: {
-    flex: 1,
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     borderWidth: 2,
     borderColor: COLORS.primary,
-    padding: 20,
+    borderStyle: "dashed",
+    padding: 40,
     alignItems: "center",
-    gap: 8,
-  },
-  scanButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.primary,
-  },
-  listButton: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: COLORS.warning,
-    padding: 20,
-    alignItems: "center",
-    gap: 8,
-  },
-  listButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.warning,
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 20,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-  dividerText: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    paddingHorizontal: 16,
+  scanButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.primary,
+    marginTop: 12,
   },
   searchCard: {
     backgroundColor: COLORS.surface,
@@ -963,14 +1247,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 54,
     marginBottom: 14,
+    gap: 8,
+  },
+  searchIcon: {
+    width: 24,
+    alignItems: "center",
+  },
+  phonePrefix: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.text,
   },
   searchInput: {
     flex: 1,
-    fontSize: 20,
+    fontSize: 16,
     color: COLORS.text,
-    fontWeight: "700",
-    letterSpacing: 4,
-    textAlign: "center",
+    fontWeight: "600",
   },
   clearButton: {
     padding: 4,
@@ -1248,6 +1540,49 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.text,
   },
+  printButtonsRow: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    width: "100%",
+    marginBottom: SPACING.md,
+  },
+  printButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  shareButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  printButtonDisabled: {
+    opacity: 0.5,
+  },
+  printButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+  shareButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
   newEntryButton: {
     width: "100%",
     backgroundColor: COLORS.primary,
@@ -1327,87 +1662,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#fff",
-  },
-  pendingContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  pendingHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    paddingTop: 60,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  pendingTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  pendingClose: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: COLORS.surfaceSecondary,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  pendingContent: {
-    flex: 1,
-    padding: 20,
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    marginTop: 16,
-  },
-  pendingItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 12,
-  },
-  pendingItemCode: {
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  pendingItemCodeText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.primary,
-    letterSpacing: 1,
-  },
-  pendingItemInfo: {
-    flex: 1,
-  },
-  pendingItemName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-  pendingItemCount: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  pendingItemTime: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    fontWeight: "500",
   },
   modalOverlay: {
     flex: 1,

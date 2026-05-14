@@ -527,6 +527,11 @@ export default function HistoryScreen() {
                             <View style={styles.entryCodeBadge}>
                               <Text style={styles.entryCode}>{entry.entry_code}</Text>
                             </View>
+                            {entry.entry_mode === "marjana_mandap" && (
+                              <View style={styles.innerGateBadge}>
+                                <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                              </View>
+                            )}
                             <View style={[styles.statusBadge, { backgroundColor: cfg.color + "18" }]}>
                               <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
                             </View>
@@ -890,6 +895,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 3,
     borderRadius: RADIUS.sm,
+  },
+  innerGateBadge: {
+    backgroundColor: "#0891b215",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: "#0891b230",
+  },
+  innerGateBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0891b2",
+    letterSpacing: 0.3,
   },
   entryCode: {
     fontSize: 13,

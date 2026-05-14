@@ -434,6 +434,7 @@ export default function HomeScreen() {
             {pendingTickets.map((ticket) => {
               const expired = isTicketExpired(ticket);
               const isRegistered = ticket.status === "registered";
+              const isInnerGate = ticket.entry_mode === "marjana_mandap";
               return (
                 <TouchableOpacity
                   key={ticket.id}
@@ -452,7 +453,11 @@ export default function HomeScreen() {
                       <Text style={styles.ticketDevotees}>
                         {ln(ticket.declared_devotee_count)} {ticket.declared_devotee_count > 1 ? t("app.home.devotees") : t("app.home.devotee")}
                       </Text>
-                      {isRegistered ? (
+                      {isInnerGate ? (
+                        <View style={styles.innerGateBadge}>
+                          <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                        </View>
+                      ) : isRegistered ? (
                         <View style={styles.ticketAtGateRow}>
                           <Check size={12} color={COLORS.success} />
                           <Text style={styles.ticketAtGateText}>{t("app.home.atWestGate")}</Text>
@@ -1213,6 +1218,22 @@ const styles = StyleSheet.create({
   },
   ticketCardRegistered: {
     borderColor: COLORS.success,
+  },
+  innerGateBadge: {
+    marginTop: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "#0891b215",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#0891b230",
+  },
+  innerGateBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0891b2",
+    letterSpacing: 0.3,
   },
   ticketAtGateRow: {
     flexDirection: "row",

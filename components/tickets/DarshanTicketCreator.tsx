@@ -21,6 +21,8 @@ import {
   ChevronDown,
   ChevronUp,
   Pencil,
+  Printer,
+  Share2,
 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { useLocalizedNumber } from "@/hooks/useLocalizedNumber";
@@ -41,6 +43,8 @@ import {
 } from "@/services/offlineEntryService";
 import { connectivity, todayString } from "@/lib/offline";
 import { getAvailableSlotsForToday, getSlotQuota } from "@/services/slotService";
+import { getPrintTokenEnabled, getPrintTokenIncludePhoto } from "@/services/settingsService";
+import { printGateToken, shareGateTokenPDF } from "@/services/printTokenService";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { SebayatQuota, GateEntry, SlotQuota, DarshanSlot, EntryMode } from "@/types/database";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
@@ -83,6 +87,9 @@ export function DarshanTicketCreator({
   const [editCount, setEditCount] = useState(1);
   const [editCountError, setEditCountError] = useState<string | null>(null);
   const [savingCount, setSavingCount] = useState(false);
+  const [printTokenEnabled, setPrintTokenEnabled] = useState(false);
+  const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!sebayatRegistrationId) return;
@@ -130,6 +137,8 @@ export function DarshanTicketCreator({
 
   useEffect(() => {
     loadData();
+    getPrintTokenEnabled().then(setPrintTokenEnabled);
+    getPrintTokenIncludePhoto().then(setPrintTokenIncludePhoto);
   }, [loadData]);
 
   useEffect(() => {
@@ -394,12 +403,18 @@ export function DarshanTicketCreator({
                       <Text style={styles.ticketDevotees}>
                         {ln(ticket.declared_devotee_count)} {ticket.declared_devotee_count > 1 ? t("supervisor.darshanTickets.devotees") : t("supervisor.darshanTickets.devotee")}
                       </Text>
-                      <View style={styles.ticketTimeRow}>
-                        <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
-                        <Text style={[styles.ticketTime, expired && styles.ticketTimeExpired]}>
-                          {formatTimeRemaining(ticket)}
-                        </Text>
-                      </View>
+                      {ticket.entry_mode === "marjana_mandap" ? (
+                        <View style={styles.innerGateBadge}>
+                          <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.ticketTimeRow}>
+                          <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
+                          <Text style={[styles.ticketTime, expired && styles.ticketTimeExpired]}>
+                            {formatTimeRemaining(ticket)}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                   {staffUserId && (
@@ -778,12 +793,18 @@ export function DarshanTicketCreator({
                     <Text style={styles.ticketDevotees}>
                       {ln(ticket.declared_devotee_count)} {ticket.declared_devotee_count > 1 ? t("supervisor.darshanTickets.devotees") : t("supervisor.darshanTickets.devotee")}
                     </Text>
-                    <View style={styles.ticketTimeRow}>
-                      <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
-                      <Text style={[styles.ticketTime, expired && styles.ticketTimeExpired]}>
-                        {formatTimeRemaining(ticket)}
-                      </Text>
-                    </View>
+                    {ticket.entry_mode === "marjana_mandap" ? (
+                      <View style={styles.innerGateBadge}>
+                        <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.ticketTimeRow}>
+                        <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
+                        <Text style={[styles.ticketTime, expired && styles.ticketTimeExpired]}>
+                          {formatTimeRemaining(ticket)}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </View>
                 <View style={styles.ticketActions}>
@@ -1043,6 +1064,37 @@ export function DarshanTicketCreator({
                     </Text>
                   </View>
                 </View>
+
+                {printTokenEnabled && staffMode && (
+                  <View style={styles.ticketPrintRow}>
+                    <TouchableOpacity
+                      style={[styles.ticketPrintButton, printing && { opacity: 0.5 }]}
+                      onPress={async () => {
+                        setPrinting(true);
+                        await printGateToken(selectedTicket, { includePhoto: printTokenIncludePhoto });
+                        setPrinting(false);
+                      }}
+                      disabled={printing}
+                      activeOpacity={0.8}
+                    >
+                      <Printer size={17} color={COLORS.primary} />
+                      <Text style={styles.ticketPrintText}>Print Token</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.ticketShareButton, printing && { opacity: 0.5 }]}
+                      onPress={async () => {
+                        setPrinting(true);
+                        await shareGateTokenPDF(selectedTicket, { includePhoto: printTokenIncludePhoto });
+                        setPrinting(false);
+                      }}
+                      disabled={printing}
+                      activeOpacity={0.8}
+                    >
+                      <Share2 size={17} color={COLORS.textSecondary} />
+                      <Text style={styles.ticketShareText}>Share PDF</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 <View style={styles.ticketModalActions}>
                   {selectedTicket.status === "pending" && (
@@ -1484,6 +1536,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.text,
   },
+  innerGateBadge: {
+    marginTop: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "#0891b215",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#0891b230",
+  },
+  innerGateBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0891b2",
+    letterSpacing: 0.3,
+  },
   ticketTimeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1862,6 +1930,47 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     justifyContent: "center",
     alignItems: "center",
+  },
+  ticketPrintRow: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    width: "100%",
+    marginTop: SPACING.sm,
+    marginBottom: 2,
+  },
+  ticketPrintButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  ticketPrintText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+  ticketShareButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  ticketShareText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
   },
   ticketModalActions: {
     gap: SPACING.sm,

@@ -921,7 +921,7 @@ export async function acknowledgeWestGateEntry(
   if (entry.entry_mode === "marjana_mandap") {
     return {
       success: false,
-      message: "This ticket is for Marjana Mandap direct entry. West Gate entry is not allowed.",
+      message: "This ticket is for Majana Mandapa direct entry. West Gate entry is not allowed.",
     };
   }
 
