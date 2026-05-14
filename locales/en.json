@@ -878,7 +878,17 @@
       "errSlotMaxPerUser": "Max bookings per user must be at least 1",
       "otpSaved": "OTP channel settings saved",
       "errOtpMin": "At least one OTP channel must be enabled",
-      "failedOtp": "Failed to save OTP channel settings"
+      "failedOtp": "Failed to save OTP channel settings",
+      "offlineModeSection": "Offline Mode",
+      "offlineModeTitle": "Allow Offline Queuing",
+      "offlineModeEnabledDesc": "Devices can queue operations locally and sync when connection returns",
+      "offlineModeDisabledDesc": "All operations require an active internet connection — offline attempts will fail immediately",
+      "offlineModeDisableTitle": "Disable Offline Mode",
+      "offlineModeDisableBody": "When offline mode is off, supervisors and sebayats will not be able to use the app without an active internet connection. Any attempt to create or process tickets while offline will fail immediately.\n\nAre you sure you want to disable offline mode?",
+      "offlineModePendingTitle": "Pending Offline Operations",
+      "offlineModePendingBody": "There are {{count}} operation(s) queued on this device waiting to sync.\n\nDisabling offline mode means supervisors and sebayats will not be able to use the app without an active internet connection.\n\nDo you want to disable offline mode anyway?",
+      "offlineModeDisableBtn": "Disable",
+      "offlineModeDisableAnywayBtn": "Disable Anyway"
     },
     "analytics": {
       "title": "Analytics",

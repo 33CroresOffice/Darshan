@@ -11,7 +11,7 @@ import { COLORS } from "@/constants/config";
 import "@/lib/i18n";
 
 function RootLayoutNav() {
-  const { session, profile, registration, loading } = useAuth();
+  const { session, profile, registration, registrationLoaded, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -48,11 +48,14 @@ function RootLayoutNav() {
         if (!inSupervisorGroup) {
           router.replace("/(supervisor)");
         }
-      } else if (!registration) {
+      } else if (registrationLoaded && !registration) {
+        // Only redirect to onboarding when we've confirmed (via a successful
+        // server fetch) that no registration exists. If offline and the fetch
+        // never completed, registrationLoaded is false so we stay put.
         if (!inOnboardingGroup) {
           router.replace("/(onboarding)/registration");
         }
-      } else if (registration.approval_status === "pending") {
+      } else if (registration?.approval_status === "pending") {
         if (!inPendingGroup && !inOnboardingGroup) {
           router.replace("/(pending)/status");
         }
@@ -66,7 +69,7 @@ function RootLayoutNav() {
         }
       }
     }
-  }, [session, profile, registration, loading, segments]);
+  }, [session, profile, registration, registrationLoaded, loading, segments]);
 
   if (loading) {
     return (

@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Printer,
   Image,
+  WifiOff,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "@/services/authService";
@@ -48,9 +49,12 @@ import {
   updatePrintTokenEnabled,
   getPrintTokenIncludePhoto,
   updatePrintTokenIncludePhoto,
+  getOfflineModeEnabled,
+  updateOfflineModeEnabled,
   type OtpChannels,
   type ApprovalRule,
 } from "@/services/settingsService";
+import { getOutboxCount } from "@/lib/offline";
 import {
   getAllCategories,
   createCategory,
@@ -105,6 +109,11 @@ export default function SettingsScreen() {
   const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
   const [savingPrintTokenPhoto, setSavingPrintTokenPhoto] = useState(false);
 
+  const [offlineModeEnabled, setOfflineModeEnabled] = useState(true);
+  const [savingOfflineMode, setSavingOfflineMode] = useState(false);
+  const [offlineConfirmVisible, setOfflineConfirmVisible] = useState(false);
+  const [offlineConfirmPendingCount, setOfflineConfirmPendingCount] = useState(0);
+
   const [slots, setSlots] = useState<DarshanSlot[]>([]);
   const [slotModalVisible, setSlotModalVisible] = useState(false);
   const [editingSlot, setEditingSlot] = useState<DarshanSlot | null>(null);
@@ -144,7 +153,7 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      const [maxDevoteesValue, ticketValidityValue, otpChannelsValue, slotsEnabledValue, templeIdCardEnabledValue, approvalRuleValue, printTokenEnabledValue, printTokenPhotoValue] = await Promise.all([
+      const [maxDevoteesValue, ticketValidityValue, otpChannelsValue, slotsEnabledValue, templeIdCardEnabledValue, approvalRuleValue, printTokenEnabledValue, printTokenPhotoValue, offlineModeValue] = await Promise.all([
         getDailyBookingCapPerUser(),
         getTicketValidityMinutes(),
         getOtpChannels(),
@@ -153,6 +162,7 @@ export default function SettingsScreen() {
         getApprovalRule(),
         getPrintTokenEnabled(),
         getPrintTokenIncludePhoto(),
+        getOfflineModeEnabled(),
       ]);
       setMaxDevotees(maxDevoteesValue.toString());
       setOriginalMaxDevotees(maxDevoteesValue);
@@ -164,6 +174,7 @@ export default function SettingsScreen() {
       setApprovalRule(approvalRuleValue);
       setPrintTokenEnabled(printTokenEnabledValue);
       setPrintTokenIncludePhoto(printTokenPhotoValue);
+      setOfflineModeEnabled(offlineModeValue);
     } catch (err) {
       console.error("Failed to load settings:", err);
     } finally {
@@ -210,6 +221,33 @@ export default function SettingsScreen() {
       setPrintTokenIncludePhoto(value);
     }
     setSavingPrintTokenPhoto(false);
+  };
+
+  const handleToggleOfflineMode = async (value: boolean) => {
+    if (!profile?.id) return;
+
+    // Enabling: no confirmation needed
+    if (value) {
+      setSavingOfflineMode(true);
+      const result = await updateOfflineModeEnabled(true, profile.id);
+      if (result.success) setOfflineModeEnabled(true);
+      setSavingOfflineMode(false);
+      return;
+    }
+
+    // Disabling: check for pending items, then show confirm modal
+    const pendingCount = await getOutboxCount();
+    setOfflineConfirmPendingCount(pendingCount);
+    setOfflineConfirmVisible(true);
+  };
+
+  const handleConfirmDisableOfflineMode = async () => {
+    if (!profile?.id) return;
+    setOfflineConfirmVisible(false);
+    setSavingOfflineMode(true);
+    const result = await updateOfflineModeEnabled(false, profile.id);
+    if (result.success) setOfflineModeEnabled(false);
+    setSavingOfflineMode(false);
   };
 
   const handleSelectApprovalRule = async (rule: ApprovalRule) => {
@@ -1011,6 +1049,33 @@ export default function SettingsScreen() {
               })}
             </View>
 
+            <Text style={styles.sectionLabel}>Offline Mode</Text>
+
+            <View style={styles.card}>
+              <View style={styles.featureToggleRow}>
+                <View style={[styles.settingIcon, { backgroundColor: offlineModeEnabled ? "#ECFDF5" : "#FEF2F2" }]}>
+                  <WifiOff size={22} color={offlineModeEnabled ? COLORS.success : COLORS.error} />
+                </View>
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingTitle, !offlineModeEnabled && styles.settingTitleDisabled]}>
+                    Allow Offline Queuing
+                  </Text>
+                  <Text style={styles.settingDescription}>
+                    {offlineModeEnabled
+                      ? "Devices can queue operations locally and sync when connection returns"
+                      : "All operations require an active internet connection — offline attempts will fail immediately"}
+                  </Text>
+                </View>
+                <Switch
+                  value={offlineModeEnabled}
+                  onValueChange={handleToggleOfflineMode}
+                  disabled={savingOfflineMode}
+                  trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
+                  thumbColor={offlineModeEnabled ? COLORS.primary : COLORS.textMuted}
+                />
+              </View>
+            </View>
+
             <Text style={styles.sectionLabel}>Darshan Slots</Text>
 
             <View style={styles.card}>
@@ -1163,6 +1228,57 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={offlineConfirmVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setOfflineConfirmVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 400, alignSelf: "center", marginHorizontal: 24 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {offlineConfirmPendingCount > 0 ? "Pending Offline Operations" : "Disable Offline Mode"}
+              </Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setOfflineConfirmVisible(false)}
+              >
+                <X size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.settingDescription, { marginBottom: 8, lineHeight: 20 }]}>
+              {offlineConfirmPendingCount > 0
+                ? `There are ${offlineConfirmPendingCount} operation${offlineConfirmPendingCount === 1 ? "" : "s"} queued on this device waiting to sync.`
+                : null}
+            </Text>
+            <Text style={[styles.settingDescription, { marginBottom: 20, lineHeight: 20 }]}>
+              When offline mode is off, supervisors and sebayats will not be able to use the app without an active internet connection. Any attempt to create or process tickets while offline will fail immediately.
+            </Text>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.saveButton, { flex: 1, backgroundColor: COLORS.border, justifyContent: "center" }]}
+                onPress={() => setOfflineConfirmVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.saveButtonText, { color: COLORS.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveButton, { flex: 1, backgroundColor: COLORS.error, justifyContent: "center" }]}
+                onPress={handleConfirmDisableOfflineMode}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveButtonText}>
+                  {offlineConfirmPendingCount > 0 ? "Disable Anyway" : "Disable"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={slotModalVisible}

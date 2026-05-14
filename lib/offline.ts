@@ -206,6 +206,10 @@ export async function getOutbox(): Promise<OutboxOp[]> {
   return raw ? (JSON.parse(raw) as OutboxOp[]) : [];
 }
 
+export async function getOutboxCount(): Promise<number> {
+  return (await getOutbox()).length;
+}
+
 async function setOutbox(items: OutboxOp[]) {
   await AsyncStorage.setItem(OUTBOX_KEY, JSON.stringify(items));
   emitOutboxChanged();

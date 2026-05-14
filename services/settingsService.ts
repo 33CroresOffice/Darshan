@@ -236,6 +236,32 @@ export async function updatePrintTokenIncludePhoto(
   return { success: true, message: "Print token photo setting updated" };
 }
 
+export async function getOfflineModeEnabled(): Promise<boolean> {
+  const setting = await getSystemSetting("offline_mode_enabled");
+  if (setting) {
+    const v = setting.setting_value?.value ?? setting.setting_value;
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") return v !== "false";
+  }
+  return true; // safe default: offline always works unless server explicitly says off
+}
+
+export async function updateOfflineModeEnabled(
+  enabled: boolean,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .update({ setting_value: { value: enabled }, updated_by: userId })
+    .eq("setting_key", "offline_mode_enabled");
+
+  if (error) {
+    console.error("Error updating offline_mode_enabled:", error);
+    return { success: false, message: error.message };
+  }
+  return { success: true, message: "Offline mode setting updated" };
+}
+
 export async function getAllSettings(): Promise<SystemSetting[]> {
   const { data, error } = await supabase
     .from("system_settings")

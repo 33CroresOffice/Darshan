@@ -14,6 +14,8 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   registration: SebayatRegistration | null;
+  // true once we've attempted (and succeeded or confirmed-absent) at least one fetch
+  registrationLoaded: boolean;
   loading: boolean;
   hasApprovedRegistration: boolean;
   sebayatRegistrationId: string | null;
@@ -29,25 +31,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [registration, setRegistration] = useState<SebayatRegistration | null>(
     null
   );
+  const [registrationLoaded, setRegistrationLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", userId)
       .maybeSingle();
-    setProfile(data as Profile | null);
-    return data as Profile | null;
+    // Only update state on success so an offline failure doesn't wipe the profile
+    if (!error) {
+      setProfile(data as Profile | null);
+    }
+    return error ? null : (data as Profile | null);
   };
 
   const fetchRegistration = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("sebayat_registrations")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
-    setRegistration(data as SebayatRegistration | null);
+    // Only update state on success so an offline failure doesn't wipe the
+    // previously-loaded registration and trigger a redirect to onboarding.
+    if (!error) {
+      setRegistration(data as SebayatRegistration | null);
+      setRegistrationLoaded(true);
+    }
   };
 
   const refreshProfile = async () => {
@@ -83,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(null);
         setProfile(null);
         setRegistration(null);
+        setRegistrationLoaded(false);
         setLoading(false);
         return;
       }
@@ -100,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
         setRegistration(null);
+        setRegistrationLoaded(false);
         setLoading(false);
       }
     });
@@ -150,6 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: session?.user ?? null,
         profile,
         registration,
+        registrationLoaded,
         loading,
         hasApprovedRegistration,
         sebayatRegistrationId,

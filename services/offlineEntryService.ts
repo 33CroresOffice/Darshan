@@ -23,7 +23,7 @@ import {
   updateDarshanTicketCount,
   isTicketExpired as isExpired,
 } from "./entryService";
-import { getTicketValidityMinutes } from "./settingsService";
+import { getTicketValidityMinutes, getOfflineModeEnabled } from "./settingsService";
 import type { GateEntry, EntryMode, SebayatQuota } from "@/types/database";
 import type { CreateEntryResult } from "@/types";
 
@@ -81,6 +81,18 @@ export async function createTicketResilient(
       } catch {}
     }
     return result;
+  }
+
+  // Check if offline queuing is allowed before falling back to local path
+  let offlineModeEnabled = true;
+  try {
+    offlineModeEnabled = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeEnabled) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator. Please connect to the internet and try again.",
+    };
   }
 
   // Offline path — enforce local quota
@@ -165,6 +177,17 @@ export async function cancelTicketResilient(
     return r;
   }
 
+  let offlineModeEnabled = true;
+  try {
+    offlineModeEnabled = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeEnabled) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator.",
+    };
+  }
+
   // Offline cancel — mark locally and enqueue
   const list = (await getCachedTickets(sebayatId, ticket.entry_date)).map((t) =>
     t.id === ticket.id ? { ...t, status: "cancelled" as const } : t
@@ -191,6 +214,17 @@ export async function editTicketCountResilient(
       await setCachedTickets(sebayatId, ticket.entry_date, list);
     }
     return r;
+  }
+
+  let offlineModeEnabled = true;
+  try {
+    offlineModeEnabled = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeEnabled) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator.",
+    };
   }
 
   const quota = await getEffectiveQuota(sebayatId);
@@ -306,6 +340,18 @@ export async function recordWestGateEventResilient(args: {
     // If ticket not synced yet, fall through to enqueue
   }
 
+  let offlineModeWest = true;
+  try {
+    offlineModeWest = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeWest) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator.",
+      offline: false,
+    };
+  }
+
   await enqueue("gate.west_verify", {
     idempotencyKey: args.idempotencyKey,
     supervisorId: args.supervisorId,
@@ -335,6 +381,18 @@ export async function recordInnerGateEventResilient(args: {
       p_reason: args.reason ?? null,
     });
     if (!error) return { success: true, message: "Inner gate verified", offline: false };
+  }
+
+  let offlineModeInner = true;
+  try {
+    offlineModeInner = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeInner) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator.",
+      offline: false,
+    };
   }
 
   await enqueue("gate.inner_verify", {
