@@ -18,7 +18,8 @@
     "retry": "ପୁନଃ ଚେଷ୍ଟା",
     "viewAll": "ସବୁ ଦେଖନ୍ତୁ",
     "error": "ତ୍ରୁଟି",
-    "success": "ସଫଳ"
+    "success": "ସଫଳ",
+    "optional": "ଐଚ୍ଛିକ"
   },
   "auth": {
     "brandName": "ଦର୍ଶନ",
@@ -228,7 +229,9 @@
       "entryModeAlertConfirm": "ମାଜନ ମଣ୍ଡପ ବାଛନ୍ତୁ",
       "entryModeAlertCancel": "ବାତିଲ",
       "entryModeDirectBadge": "ସିଧା ପ୍ରବେଶ",
-      "dailyQuotaFull": "ଦୈନିକ କୋଟା ସମ୍ପୂର୍ଣ୍ଣ — ଆଜି ଆଉ ଟିକେଟ ସୃଷ୍ଟି ହୋଇ ପାରିବ ନାହିଁ"
+      "dailyQuotaFull": "ଦୈନିକ କୋଟା ସମ୍ପୂର୍ଣ୍ଣ — ଆଜି ଆଉ ଟିକେଟ ସୃଷ୍ଟି ହୋଇ ପାରିବ ନାହିଁ",
+      "offlineNoDataTitle": "ଅଫ୍‌ଲାଇନ — କ୍ୟାସ ডেটা ନାହିଁ",
+      "offlineNoDataBody": "ଅଫ୍‌ଲାଇନ ମୋଡ ସକ୍ଷମ କରିବା ପାଇଁ ଥରେ ଇଣ୍ଟର୍ନେଟ ସଂଯୋଗ କରନ୍ତୁ।"
     },
     "history": {
       "title": "ପ୍ରବେଶ ଇତିହାସ",
@@ -286,7 +289,8 @@
       "photoPermission": "ଫଟୋ ଆକ୍ସେସ ଅନୁମତି ଆବଶ୍ୟକ",
       "failedPhoto": "ଫଟୋ ଅଦ୍ୟତନ ବିଫଳ ହେଲା",
       "failedAddress": "ଠିକଣା ଅଦ୍ୟତନ ବିଫଳ ହେଲା",
-      "failedDob": "ଜନ୍ମ ତାରିଖ ଅଦ୍ୟତନ ବିଫଳ ହେଲା"
+      "failedDob": "ଜନ୍ମ ତାରିଖ ଅଦ୍ୟତନ ବିଫଳ ହେଲା",
+      "offlineMutationError": "ଆପଣ ଅଫ୍‌ଲାଇନ ଅଛନ୍ତି। ପ୍ରୋଫାଇଲ ଅଦ୍ୟତନ ପାଇଁ ଇଣ୍ଟର୍ନେଟ ସଂଯୋଗ ଆବଶ୍ୟକ।"
     }
   },
   "supervisor": {
@@ -595,5 +599,65 @@
     "successTitle": "ଧନ୍ୟବାଦ!",
     "successSubtitle": "ଆପଣଙ୍କ ମତାମତ ସଫଳତାର ସହ ଦାଖଲ ହୋଇଛି।",
     "done": "ସମ୍ପନ୍ନ"
+  },
+  "gumasta": {
+    "title": "ମୋ ଗୁମାସ୍ତା",
+    "subtitle": "ଆପଣଙ୍କ ପାଇଁ ମନ୍ଦିରରେ ଯାଇପାରୁଥିବା କର୍ମଚାରୀମାନଙ୍କୁ ପରିଚାଳନା କରନ୍ତୁ",
+    "addGumasta": "ଗୁମାସ୍ତା ଯୋଡ଼ନ୍ତୁ",
+    "editGumasta": "ଗୁମାସ୍ତା ସଂପାଦନ",
+    "name": "ନାମ",
+    "namePlaceholder": "ଗୁମାସ୍ତାଙ୍କ ନାମ ଲିଖନ୍ତୁ",
+    "contactNumber": "ଯୋଗାଯୋଗ ନମ୍ବର",
+    "contactPlaceholder": "ଯୋଗାଯୋଗ ନମ୍ବର ଲିଖନ୍ତୁ",
+    "photo": "ଫଟୋ",
+    "uploadPhoto": "ଫଟୋ ଅପଲୋଡ୍",
+    "changePhoto": "ଫଟୋ ବଦଳାନ୍ତୁ",
+    "active": "ସକ୍ରିୟ",
+    "inactive": "ନିଷ୍କ୍ରିୟ",
+    "enable": "ସକ୍ରିୟ କରନ୍ତୁ",
+    "disable": "ନିଷ୍କ୍ରିୟ କରନ୍ତୁ",
+    "deleteGumasta": "ଗୁମାସ୍ତା ବାଦ ଦିଅନ୍ତୁ",
+    "deleteConfirm": "ଆପଣ ନିଶ୍ଚିତ କି ଏହି ଗୁମାସ୍ତାଙ୍କୁ ବାଦ ଦେବାକୁ ଚାହୁଁଛନ୍ତି?",
+    "noGumastas": "କୌଣସି ଗୁମାସ୍ତା ଯୋଡ଼ା ହୋଇନାହିଁ",
+    "noGumastasSubtitle": "ଜଣେ ଗୁମାସ୍ତା ଯୋଡ଼ନ୍ତୁ ଯିଏ ଆପଣଙ୍କ ପାଇଁ ମନ୍ଦିର ଯାଇପାରିବ",
+    "workHistory": "କାର୍ଯ୍ୟ ଇତିହାସ",
+    "noHistory": "ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି ଟିକେଟ ନିୟୋଜିତ ହୋଇନାହିଁ",
+    "assignGumasta": "ଗୁମାସ୍ତା ନିୟୋଜନ",
+    "assignToAll": "ସମସ୍ତ ଟିକେଟରେ ନିୟୋଜନ",
+    "assignedTo": "ନିୟୋଜିତ",
+    "removeAssignment": "ହଟାନ୍ତୁ",
+    "selectGumasta": "ଗୁମାସ୍ତା ବାଛନ୍ତୁ",
+    "assignedCount": "{{count}} ଟିକେଟ ନିୟୋଜିତ",
+    "assignSuccess": "ଗୁମାସ୍ତା ସଫଳତାର ସହ ନିୟୋଜିତ",
+    "removeSuccess": "ଗୁମାସ୍ତା ଟିକେଟରୁ ହଟାଯାଇଛି",
+    "bulkAssignSuccess": "{{count}} ଟିକେଟରେ ଗୁମାସ୍ତା ନିୟୋଜିତ",
+    "gumastaInfo": "ଗୁମାସ୍ତା ତଥ୍ୟ",
+    "sentViaGumasta": "ଗୁମାସ୍ତା ମାଧ୍ୟମରେ",
+    "featureDisabled": "ଆପଣଙ୍କ ଖାତା ପାଇଁ ଗୁମାସ୍ତା ସୁବିଧା ସକ୍ରିୟ ନାହିଁ",
+    "nameRequired": "ନାମ ଆବଶ୍ୟକ",
+    "contactRequired": "ଯୋଗାଯୋଗ ନମ୍ବର ଆବଶ୍ୟକ",
+    "photoRequired": "ଫଟୋ ଆବଶ୍ୟକ",
+    "aadharRequired": "ଆଧାର କାର୍ଡ ଆବଶ୍ୟକ",
+    "approval": {
+      "pending": "ଅନୁମୋଦନ ଅପେକ୍ଷା",
+      "approved": "ଅନୁମୋଦିତ",
+      "rejected": "ପ୍ରତ୍ୟାଖ୍ୟାତ",
+      "pendingNotice": "ଏହି ଗୁମାସ୍ତା ଅଡ଼ମିନ ଅନୁମୋଦନ ଅପେକ୍ଷା କରୁଛନ୍ତି।",
+      "rejectedNotice": "ଏହି ଗୁମାସ୍ତା ପ୍ରତ୍ୟାଖ୍ୟାତ ହୋଇଛନ୍ତି।"
+    },
+    "saved": "ଗୁମାସ୍ତା ସଫଳତାର ସହ ସଞ୍ଚୟ ହୋଇଛି",
+    "deleted": "ଗୁମାସ୍ତା ବାଦ ଦିଆଯାଇଛି",
+    "adminTitle": "ଗୁମାସ୍ତା ସୁବିଧା",
+    "adminEnabled": "ଗୁମାସ୍ତା ସାର୍ବଜନୀନ ସକ୍ରିୟ",
+    "adminEnabledDesc": "ସମସ୍ତ ଅନୁମୋଦିତ ସେବାୟତଙ୍କୁ ଗୁମାସ୍ତା ନିୟୋଜନ କରିବାକୁ ଅନୁମତି ଦିଅନ୍ତୁ",
+    "adminAllowList": "ଅନୁମୋଦିତ ସେବାୟତ",
+    "adminAllowListDesc": "ସାର୍ବଜନୀନ ବନ୍ଦ ଥିଲେ, କେବଳ ଏହି ସେବାୟତମାନେ ଗୁମାସ୍ତା ବ୍ୟବହାର କରିପାରିବେ",
+    "adminSearchSebayat": "ନାମ ବା ଫୋନରେ ସେବାୟତ ଖୋଜନ୍ତୁ",
+    "adminNoAllowed": "ଅନୁମୋଦିତ ତାଲିକାରେ କୌଣସି ସେବାୟତ ନାହାଁନ୍ତି",
+    "aadharCard": "ଆଧାର କାର୍ଡ",
+    "aadharUploaded": "ଆଧାର କାର୍ଡ ଅପଲୋଡ ହୋଇଛି",
+    "tapToChange": "ବଦଳାଇବାକୁ ଟ୍ୟାପ୍ କରନ୍ତୁ",
+    "uploadAadhar": "ଆଧାର କାର୍ଡ ଅପଲୋଡ",
+    "uploadAadharHint": "ଆଧାର କାର୍ଡର ସାମ୍ନା ପଟ"
   }
 }

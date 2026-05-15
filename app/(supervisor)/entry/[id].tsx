@@ -20,8 +20,10 @@ import {
   FileText,
 } from "lucide-react-native";
 import { getEntryById, getEntryAuditLogs } from "@/services/entryService";
+import { getGumastaById } from "@/services/gumastaService";
+import { GumastaInfoCard } from "@/components/tickets/GumastaInfoCard";
 import { COLORS, SHADOWS } from "@/constants/config";
-import type { GateEntry, EntryAuditLog, EntryStatus, EntryAction } from "@/types/database";
+import type { GateEntry, EntryAuditLog, EntryStatus, EntryAction, Gumasta } from "@/types/database";
 import { useTranslation } from "react-i18next";
 
 const STATUS_STYLE: Record<EntryStatus, { color: string; bg: string; icon: React.ReactNode }> = {
@@ -36,6 +38,7 @@ export default function EntryDetailScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const [entry, setEntry] = useState<GateEntry | null>(null);
+  const [entryGumasta, setEntryGumasta] = useState<Gumasta | null>(null);
   const [auditLogs, setAuditLogs] = useState<EntryAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,6 +62,12 @@ export default function EntryDetailScreen() {
       loadEntry();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (entry?.gumasta_id) {
+      getGumastaById(entry.gumasta_id).then(setEntryGumasta).catch(() => setEntryGumasta(null));
+    }
+  }, [entry?.gumasta_id]);
 
   const loadEntry = async () => {
     try {
@@ -143,6 +152,7 @@ export default function EntryDetailScreen() {
               )}
             </View>
           </View>
+          {entryGumasta && <GumastaInfoCard gumasta={entryGumasta} />}
         </View>
 
         <View style={styles.card}>

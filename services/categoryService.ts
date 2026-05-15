@@ -1,16 +1,31 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { normaliseError } from "@/lib/offline";
 import type { Category } from "@/types";
 
-export async function getCategories(): Promise<Category[]> {
-  const { data, error } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("is_active", true)
-    .order("name", { ascending: true });
+const CATEGORIES_CACHE_KEY = "@cache:categories";
 
-  if (error) throw error;
-  return (data || []) as Category[];
+export async function getCategories(): Promise<Category[]> {
+  try {
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    const result = (data || []) as Category[];
+    // Persist for offline use
+    try { await AsyncStorage.setItem(CATEGORIES_CACHE_KEY, JSON.stringify(result)); } catch {}
+    return result;
+  } catch (err) {
+    // Network unavailable — return cached data if available
+    try {
+      const raw = await AsyncStorage.getItem(CATEGORIES_CACHE_KEY);
+      if (raw) return JSON.parse(raw) as Category[];
+    } catch {}
+    throw err;
+  }
 }
 
 export async function getAllCategories(): Promise<Category[]> {

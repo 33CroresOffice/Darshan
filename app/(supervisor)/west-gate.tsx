@@ -62,10 +62,14 @@ import {
   getPrintTokenIncludePhoto,
 } from "@/services/settingsService";
 import { printGateToken, shareGateTokenPDF, buildTokenHTML } from "@/services/printTokenService";
-import { connectivity } from "@/lib/offline";
+import { connectivity, cacheGateEntries, loadCachedGateEntries } from "@/lib/offline";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
+import { GumastaInfoCard } from "@/components/tickets/GumastaInfoCard";
+import { getGumastaById } from "@/services/gumastaService";
+
+const CACHE_SCOPE_WEST_PENDING = "west_gate:pending";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
-import type { SebayatRegistration, SebayatQuota, GateEntry, SlotSession } from "@/types/database";
+import type { SebayatRegistration, SebayatQuota, GateEntry, SlotSession, Gumasta } from "@/types/database";
 import type { CreateEntryResult } from "@/types";
 
 type ViewMode = "scan" | "pending";
@@ -83,6 +87,7 @@ export default function WestGateScreen() {
   const [loadingPending, setLoadingPending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<GateEntry | null>(null);
+  const [selectedGumasta, setSelectedGumasta] = useState<Gumasta | null>(null);
   const [sebayat, setSebayat] = useState<SebayatRegistration | null>(null);
   const [quota, setQuota] = useState<SebayatQuota | null>(null);
   const [devoteeCount, setDevoteeCount] = useState(1);
@@ -101,14 +106,29 @@ export default function WestGateScreen() {
   const [tokenPreviewHtml, setTokenPreviewHtml] = useState("");
   const scannerRef = useRef<boolean>(false);
 
+  useEffect(() => {
+    if (selectedEntry?.gumasta_id) {
+      getGumastaById(selectedEntry.gumasta_id).then(setSelectedGumasta).catch(() => setSelectedGumasta(null));
+    } else {
+      setSelectedGumasta(null);
+    }
+  }, [selectedEntry?.gumasta_id]);
+
   const loadPendingTickets = useCallback(async () => {
     setLoadingPending(true);
-    const [tickets, session] = await Promise.all([
-      getWestGatePendingAcknowledgments(),
-      getActiveSession(),
-    ]);
-    setPendingTickets(tickets);
-    setActiveSession(session);
+    // Paint cached data immediately while network fetches
+    const cached = await loadCachedGateEntries(CACHE_SCOPE_WEST_PENDING);
+    if (cached.length > 0) setPendingTickets(cached);
+
+    if (connectivity.isOnline()) {
+      const [tickets, session] = await Promise.all([
+        getWestGatePendingAcknowledgments(),
+        getActiveSession(),
+      ]);
+      setPendingTickets(tickets);
+      setActiveSession(session);
+      await cacheGateEntries(CACHE_SCOPE_WEST_PENDING, tickets);
+    }
     setLoadingPending(false);
   }, []);
 
@@ -745,6 +765,7 @@ export default function WestGateScreen() {
                     )}
                   </View>
                 </View>
+                {selectedGumasta && <GumastaInfoCard gumasta={selectedGumasta} />}
 
                 <View style={styles.acknowledgeDetails}>
                   <View style={styles.acknowledgeDetailItem}>
@@ -1121,6 +1142,7 @@ export default function WestGateScreen() {
                       )}
                     </View>
                   </View>
+                  {selectedGumasta && <GumastaInfoCard gumasta={selectedGumasta} />}
                   <View style={styles.acknowledgeDetails}>
                     <View style={styles.acknowledgeDetailItem}>
                       <Users size={20} color={COLORS.primary} />

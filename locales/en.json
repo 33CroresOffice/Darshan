@@ -18,7 +18,8 @@
     "retry": "Retry",
     "viewAll": "View all",
     "error": "Error",
-    "success": "Success"
+    "success": "Success",
+    "optional": "Optional"
   },
   "auth": {
     "brandName": "Darshan",
@@ -228,7 +229,9 @@
       "entryModeAlertConfirm": "Select Majana Mandapa",
       "entryModeAlertCancel": "Cancel",
       "entryModeDirectBadge": "Direct Entry",
-      "dailyQuotaFull": "Daily quota completed — no more tickets can be created today"
+      "dailyQuotaFull": "Daily quota completed — no more tickets can be created today",
+      "offlineNoDataTitle": "Offline — No cached data",
+      "offlineNoDataBody": "Connect to the internet once to enable offline mode for future sessions."
     },
     "history": {
       "title": "Entry History",
@@ -297,7 +300,8 @@
       "photoPermission": "Permission to access photos is required",
       "failedPhoto": "Failed to update photo",
       "failedAddress": "Failed to update address",
-      "failedDob": "Failed to update date of birth"
+      "failedDob": "Failed to update date of birth",
+      "offlineMutationError": "You are offline. Profile updates require an internet connection."
     }
   },
   "supervisor": {
@@ -1333,5 +1337,65 @@
     "successTitle": "Thank you!",
     "successSubtitle": "Your feedback has been submitted successfully.",
     "done": "Done"
+  },
+  "gumasta": {
+    "title": "My Gumastas",
+    "subtitle": "Manage your staff who can go to the temple on your behalf",
+    "addGumasta": "Add Gumasta",
+    "editGumasta": "Edit Gumasta",
+    "name": "Name",
+    "namePlaceholder": "Enter gumasta name",
+    "contactNumber": "Contact Number",
+    "contactPlaceholder": "Enter contact number",
+    "photo": "Photo",
+    "uploadPhoto": "Upload Photo",
+    "changePhoto": "Change Photo",
+    "active": "Active",
+    "inactive": "Inactive",
+    "enable": "Enable",
+    "disable": "Disable",
+    "deleteGumasta": "Delete Gumasta",
+    "deleteConfirm": "Are you sure you want to delete this Gumasta? This cannot be undone.",
+    "noGumastas": "No Gumastas Added",
+    "noGumastasSubtitle": "Add a Gumasta who can represent you at the temple gate",
+    "workHistory": "Work History",
+    "noHistory": "No tickets assigned yet",
+    "assignGumasta": "Assign Gumasta",
+    "assignToAll": "Assign to All Tickets",
+    "assignedTo": "Assigned to",
+    "removeAssignment": "Remove",
+    "selectGumasta": "Select Gumasta",
+    "assignedCount": "{{count}} tickets assigned",
+    "assignSuccess": "Gumasta assigned successfully",
+    "removeSuccess": "Gumasta removed from ticket",
+    "bulkAssignSuccess": "Gumasta assigned to {{count}} tickets",
+    "gumastaInfo": "Gumasta Info",
+    "sentViaGumasta": "Sent via Gumasta",
+    "featureDisabled": "Gumasta feature is not enabled for your account",
+    "nameRequired": "Name is required",
+    "contactRequired": "Contact number is required",
+    "photoRequired": "Photo is required",
+    "aadharRequired": "Aadhaar card is required",
+    "approval": {
+      "pending": "Pending Approval",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pendingNotice": "This gumasta is pending admin approval and cannot be assigned to tickets yet.",
+      "rejectedNotice": "This gumasta was rejected and cannot be assigned to tickets."
+    },
+    "saved": "Gumasta saved successfully",
+    "deleted": "Gumasta deleted",
+    "adminTitle": "Gumasta Feature",
+    "adminEnabled": "Enable Gumasta Globally",
+    "adminEnabledDesc": "Allow all approved sebayats to assign gumastas to their tickets",
+    "adminAllowList": "Allowed Sebayats",
+    "adminAllowListDesc": "When global mode is off, only these sebayats can use the Gumasta feature",
+    "adminSearchSebayat": "Search sebayat by name or phone",
+    "adminNoAllowed": "No sebayats in allow list",
+    "aadharCard": "Aadhaar Card",
+    "aadharUploaded": "Aadhaar card uploaded",
+    "tapToChange": "Tap to replace",
+    "uploadAadhar": "Upload Aadhaar Card",
+    "uploadAadharHint": "Front side of the Aadhaar card"
   }
 }

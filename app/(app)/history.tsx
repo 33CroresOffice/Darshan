@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   View,
@@ -28,9 +28,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { getSebayatEntriesByDateRange } from "@/services/entryService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { connectivity } from "@/lib/offline";
 
 const CACHE_HISTORY_KEY = (id: string, from: string, to: string) =>
   `@sebayat:history:${id}:${from}:${to}`;
+const CACHE_LAST_RANGE_KEY = (id: string) => `@sebayat:history_last_range:${id}`;
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { GateEntry } from "@/types/database";
 
@@ -326,7 +328,8 @@ export default function HistoryScreen() {
       if (!registration?.id) return;
       setLoading(true);
 
-      // Paint from cache immediately so navigating offline doesn't blank the screen
+      // Paint from cache immediately so the screen is never blank offline
+      let hasCached = false;
       try {
         const raw = await AsyncStorage.getItem(CACHE_HISTORY_KEY(registration.id, from, to));
         if (raw) {
@@ -336,23 +339,59 @@ export default function HistoryScreen() {
           const dates = new Set<string>();
           if (groups.length > 0) dates.add(groups[0].date);
           setExpandedDates(dates);
+          hasCached = true;
         }
       } catch {}
 
-      // Then fetch live data if possible
-      try {
-        const data = await getSebayatEntriesByDateRange(registration.id, from, to);
-        setEntries(data);
-        const groups = groupByDate(data);
-        const dates = new Set<string>();
-        if (groups.length > 0) dates.add(groups[0].date);
-        setExpandedDates(dates);
-        // Persist for next offline visit
-        await AsyncStorage.setItem(
-          CACHE_HISTORY_KEY(registration.id, from, to),
-          JSON.stringify(data)
-        );
-      } catch {}
+      // Only hit the network when online — getSebayatEntriesByDateRange throws
+      // on network errors, so the catch keeps whatever we painted from cache.
+      if (connectivity.isOnline()) {
+        try {
+          const data = await getSebayatEntriesByDateRange(registration.id, from, to);
+          // Discard result if we went offline during the request
+          if (connectivity.isOnline()) {
+            setEntries(data);
+            const groups = groupByDate(data);
+            const dates = new Set<string>();
+            if (groups.length > 0) dates.add(groups[0].date);
+            setExpandedDates(dates);
+            await AsyncStorage.setItem(
+              CACHE_HISTORY_KEY(registration.id, from, to),
+              JSON.stringify(data)
+            );
+            // Remember this range so we can fall back to it when offline
+            await AsyncStorage.setItem(
+              CACHE_LAST_RANGE_KEY(registration.id),
+              JSON.stringify({ from, to })
+            );
+            hasCached = true;
+          }
+        } catch {
+          // Network failed mid-request — cached data already painted above
+        }
+      } else if (!hasCached) {
+        // Offline and no cache for this range — fall back to the last range that was loaded
+        try {
+          const lastRaw = await AsyncStorage.getItem(CACHE_LAST_RANGE_KEY(registration.id));
+          if (lastRaw) {
+            const { from: lastFrom, to: lastTo } = JSON.parse(lastRaw) as { from: string; to: string };
+            if (lastFrom !== from || lastTo !== to) {
+              const raw = await AsyncStorage.getItem(CACHE_HISTORY_KEY(registration.id, lastFrom, lastTo));
+              if (raw) {
+                const cached = JSON.parse(raw) as GateEntry[];
+                setEntries(cached);
+                const groups = groupByDate(cached);
+                const dates = new Set<string>();
+                if (groups.length > 0) dates.add(groups[0].date);
+                setExpandedDates(dates);
+                // Update the displayed range to match the fallback
+                setFromDate(lastFrom);
+                setToDate(lastTo);
+              }
+            }
+          }
+        } catch {}
+      }
 
       setLoading(false);
     },

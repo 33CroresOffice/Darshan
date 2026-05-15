@@ -80,6 +80,24 @@ export default function AppLayout() {
           }}
         />
         <Tabs.Screen
+          name="gumastas"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="gumasta-add"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="gumasta-detail"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
           name="profile"
           options={{
             title: t("app.tabs.profile"),

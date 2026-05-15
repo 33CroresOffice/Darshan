@@ -18,6 +18,7 @@ import {
   Users,
   DoorOpen,
   Ticket,
+  UserCheck,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { getAdminStats } from "@/services/adminService";
@@ -255,6 +256,20 @@ export default function DashboardScreen() {
             <View style={styles.quickActionText}>
               <Text style={styles.quickActionTitle}>Create Darshan Ticket</Text>
               <Text style={styles.quickActionSubtitle}>Create a ticket on behalf of a sebayat</Text>
+            </View>
+            <ChevronRight size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickActionCard, { marginTop: 10 }]}
+            onPress={() => router.push("/(admin)/gumasta-reviews")}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: "#FEF3C7" }]}>
+              <UserCheck size={22} color="#F59E0B" />
+            </View>
+            <View style={styles.quickActionText}>
+              <Text style={styles.quickActionTitle}>Gumasta Reviews</Text>
+              <Text style={styles.quickActionSubtitle}>Approve or reject pending gumastas</Text>
             </View>
             <ChevronRight size={18} color={COLORS.textMuted} />
           </TouchableOpacity>

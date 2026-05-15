@@ -8,6 +8,7 @@ import {
 import { Session, User } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
+import { connectivity } from "@/lib/offline";
 import type { Profile, SebayatRegistration } from "@/types";
 
 const CACHE_PROFILE_KEY = "@auth:profile";
@@ -103,9 +104,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
       if (!error) {
         const r = data as SebayatRegistration | null;
-        setRegistration(r);
-        await writeCachedRegistration(r);
-        setRegistrationLoaded(true);
+        if (r !== null) {
+          // Server returned a real row — always apply the fresh data.
+          setRegistration(r);
+          await writeCachedRegistration(r);
+          setRegistrationLoaded(true);
+        } else {
+          // Server returned null: could be "no row exists" or an offline
+          // silent failure. Use functional update to keep any existing value
+          // so a disconnection never wipes a cached registration from the UI.
+          setRegistration((prev) => prev);
+          setRegistrationLoaded(true);
+        }
       }
     } catch {}
   };
@@ -190,14 +200,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setSession(session);
       if (session?.user?.id) {
-        setLoading(true);
-        (async () => {
-          await Promise.allSettled([
-            fetchProfile(session.user.id),
-            fetchRegistration(session.user.id),
-          ]);
-          setLoading(false);
-        })();
+        // Do NOT set loading=true here — it unmounts all screens and wipes
+        // their local state. Auth state changes (token refresh, reconnect)
+        // should refresh data silently in the background.
+        // Skip network fetches if offline — cached values stay intact.
+        if (connectivity.isOnline()) {
+          (async () => {
+            await Promise.allSettled([
+              fetchProfile(session.user.id),
+              fetchRegistration(session.user.id),
+            ]);
+          })();
+        }
       } else {
         setProfile(null);
         setRegistration(null);

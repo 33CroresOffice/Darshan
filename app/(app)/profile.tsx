@@ -24,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { signOut } from "@/services/authService";
 import { updateAddress, updateDateOfBirth, updateProfilePhoto } from "@/services/registrationService";
 import { getCategories } from "@/services/categoryService";
+import { connectivity } from "@/lib/offline";
 import { LanguagePicker } from "@/components/ui/LanguagePicker";
 import { COLORS, INDIAN_STATES, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { Category } from "@/types";
@@ -84,6 +85,10 @@ export default function ProfileScreen() {
 
   const handleSaveAddress = async () => {
     if (!validateAddress() || !registration) return;
+    if (!connectivity.isOnline()) {
+      setError(t("app.profile.offlineMutationError"));
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -99,6 +104,10 @@ export default function ProfileScreen() {
 
   const handleSaveDob = async () => {
     if (!dobForm || !registration) return;
+    if (!connectivity.isOnline()) {
+      setError(t("app.profile.offlineMutationError"));
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -143,6 +152,10 @@ export default function ProfileScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0] && registration && user) {
+      if (!connectivity.isOnline()) {
+        setError(t("app.profile.offlineMutationError"));
+        return;
+      }
       setSavingPhoto(true);
       setError("");
       try {
@@ -265,6 +278,14 @@ export default function ProfileScreen() {
             <Text style={styles.languageLabel}>{t("app.profile.language")}</Text>
             <LanguagePicker />
           </View>
+
+          <TouchableOpacity
+            style={styles.gumastaLink}
+            onPress={() => router.push("/(app)/gumastas")}
+          >
+            <User size={20} color={COLORS.primary} />
+            <Text style={styles.gumastaLinkText}>{t("gumasta.title")}</Text>
+          </TouchableOpacity>
 
           {error && (
             <View style={styles.errorContainer}>
@@ -970,6 +991,23 @@ const styles = StyleSheet.create({
   uploadSubtitle: {
     fontSize: 12,
     color: COLORS.textSecondary,
+  },
+  gumastaLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  gumastaLinkText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.primary,
   },
   signOutButton: {
     flexDirection: "row",

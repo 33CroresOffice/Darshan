@@ -3,7 +3,9 @@ import {
   saveCachedSlots,
   saveLastSyncTime,
   saveServerQuota,
+  getCachedTickets,
   setCachedTickets,
+  cacheGateEntries,
   todayString,
 } from "@/lib/offline";
 import {
@@ -13,10 +15,37 @@ import {
   getOfflineModeEnabled,
   getDarshanSlotsEnabled,
 } from "./settingsService";
-import { getSebayatDailyQuota, getSebayatTodayTickets } from "./entryService";
+import {
+  getSebayatDailyQuota,
+  getSebayatTodayTickets,
+  getEntryStats,
+  getPendingVerifications,
+  getWestGatePendingAcknowledgments,
+  getTodayEntries,
+} from "./entryService";
 import { getAvailableSlotsForToday, getSlotQuota } from "./slotService";
 
 let syncing = false;
+
+export async function syncSupervisorDataLocally(): Promise<void> {
+  try {
+    const [stats, pending, westPending, todayAll] = await Promise.all([
+      getEntryStats(),
+      getPendingVerifications(),
+      getWestGatePendingAcknowledgments(),
+      getTodayEntries(),
+    ]);
+    await Promise.all([
+      cacheGateEntries("supervisor:stats", [stats as any]),
+      cacheGateEntries("supervisor:pending", pending),
+      cacheGateEntries("west_gate:pending", westPending),
+      cacheGateEntries("inner_gate:pending", pending),
+      cacheGateEntries("supervisor:today", todayAll),
+    ]);
+  } catch {
+    // Silently fail — screens will use previously cached data
+  }
+}
 
 export async function syncAllDataLocally(sebayatId: string): Promise<void> {
   if (syncing) return;
@@ -49,13 +78,19 @@ export async function syncAllDataLocally(sebayatId: string): Promise<void> {
     });
 
     // Fetch quota and tickets in parallel
-    const [quota, tickets] = await Promise.all([
+    const [quota, serverTickets] = await Promise.all([
       getSebayatDailyQuota(sebayatId, date),
       getSebayatTodayTickets(sebayatId),
     ]);
 
     await saveServerQuota(sebayatId, date, quota);
-    await setCachedTickets(sebayatId, date, tickets);
+
+    // Preserve local-only tickets (offline-created, not yet reconciled) so
+    // they are not wiped before the outbox flush can reconcile them.
+    const existing = await getCachedTickets(sebayatId, date);
+    const serverIds = new Set(serverTickets.map((t) => t.id));
+    const localOnly = existing.filter((t) => t.id.startsWith("local_") && !serverIds.has(t.id));
+    await setCachedTickets(sebayatId, date, [...localOnly, ...serverTickets]);
 
     // Fetch slots and save persistently
     const slots = await getAvailableSlotsForToday();

@@ -9,14 +9,14 @@ import { LanguageProvider } from "@/context/LanguageContext";
 import { SplashScreen } from "@/components/SplashScreen";
 import { COLORS } from "@/constants/config";
 import { connectivity, probeConnectivity } from "@/lib/offline";
-import { syncAllDataLocally } from "@/services/backgroundSyncService";
+import { syncAllDataLocally, syncSupervisorDataLocally } from "@/services/backgroundSyncService";
 import "@/lib/i18n";
 
 // Run a global connectivity probe on startup and keep it updated via
 // navigator.onLine events (web) + a periodic ping (all platforms).
 // When online, also triggers a background data sync so local caches
 // stay current before the device goes offline.
-function useGlobalConnectivity(sebayatId: string | null | undefined) {
+function useGlobalConnectivity(sebayatId: string | null | undefined, isSupervisor: boolean) {
   const wasOnlineRef = useRef(connectivity.isOnline());
 
   useEffect(() => {
@@ -24,11 +24,16 @@ function useGlobalConnectivity(sebayatId: string | null | undefined) {
       syncAllDataLocally(id).catch(() => {});
     };
 
+    const triggerSupervisorSync = () => {
+      syncSupervisorDataLocally().catch(() => {});
+    };
+
     // Probe immediately so the singleton reflects real state before any
     // screen mounts — this prevents the app from crashing on cold start
     // because it assumed it was online.
     probeConnectivity().then((online) => {
       if (online && sebayatId) triggerSync(sebayatId);
+      if (online && isSupervisor) triggerSupervisorSync();
     });
 
     // Web: react to browser online/offline events instantly
@@ -36,6 +41,7 @@ function useGlobalConnectivity(sebayatId: string | null | undefined) {
       connectivity.setOnline(true);
       probeConnectivity().then((online) => {
         if (online && sebayatId) triggerSync(sebayatId);
+        if (online && isSupervisor) triggerSupervisorSync();
       });
     };
     const handleOffline = () => connectivity.setOnline(false);
@@ -45,33 +51,46 @@ function useGlobalConnectivity(sebayatId: string | null | undefined) {
       window.addEventListener("offline", handleOffline);
     }
 
-    // All platforms: re-probe every 15 seconds so we catch intermittent drops.
-    // On reconnect (was offline, now online), sync immediately.
+    // All platforms: re-probe every 15 seconds. Sync whenever online.
     const interval = setInterval(async () => {
       const online = await probeConnectivity();
-      const wasOnline = wasOnlineRef.current;
       wasOnlineRef.current = online;
-      if (online && sebayatId) {
-        // Always sync every 15-second tick while connected, and especially
-        // on reconnect so the cache is immediately refreshed.
-        triggerSync(sebayatId);
-      }
-      if (!wasOnline && online && sebayatId) {
-        // Reconnect: also fires through the sync above, no duplicate needed
-      }
+      if (online && sebayatId) triggerSync(sebayatId);
+      if (online && isSupervisor) triggerSupervisorSync();
     }, 15000);
 
-    // AppState: sync when app comes back to foreground from background
-    const handleAppState = (nextState: AppStateStatus) => {
-      if (nextState === "active" && sebayatId && connectivity.isOnline()) {
-        triggerSync(sebayatId);
-      }
-    };
-    const appStateSub = AppState.addEventListener("change", handleAppState);
+    // Foreground resume: sync when the tab/app becomes visible again.
+    // On web use visibilitychange; on native use AppState.
+    let appStateSub: ReturnType<typeof AppState.addEventListener> | null = null;
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const handleVisibility = () => {
+        if (document.visibilityState === "visible" && connectivity.isOnline()) {
+          if (sebayatId) triggerSync(sebayatId);
+          if (isSupervisor) triggerSupervisorSync();
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibility);
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener("visibilitychange", handleVisibility);
+        if (typeof window !== "undefined") {
+          window.removeEventListener("online", handleOnline);
+          window.removeEventListener("offline", handleOffline);
+        }
+      };
+    } else {
+      const handleAppState = (nextState: AppStateStatus) => {
+        if (nextState === "active" && connectivity.isOnline()) {
+          if (sebayatId) triggerSync(sebayatId);
+          if (isSupervisor) triggerSupervisorSync();
+        }
+      };
+      appStateSub = AppState.addEventListener("change", handleAppState);
+    }
 
     return () => {
       clearInterval(interval);
-      appStateSub.remove();
+      appStateSub?.remove();
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.removeEventListener("online", handleOnline);
         window.removeEventListener("offline", handleOffline);
@@ -82,7 +101,8 @@ function useGlobalConnectivity(sebayatId: string | null | undefined) {
 
 function RootLayoutNav() {
   const { session, profile, registration, registrationLoaded, loading } = useAuth();
-  useGlobalConnectivity(registration?.id);
+  const isSupervisor = profile?.role === "supervisor";
+  useGlobalConnectivity(registration?.id, isSupervisor);
   const segments = useSegments();
   const router = useRouter();
 

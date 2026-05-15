@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -53,15 +53,19 @@ import {
   resolveScannedTicket,
   recordInnerGateEventResilient,
 } from "@/services/offlineEntryService";
-import { connectivity } from "@/lib/offline";
+import { connectivity, cacheGateEntries, loadCachedGateEntries } from "@/lib/offline";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
+import { GumastaInfoCard } from "@/components/tickets/GumastaInfoCard";
+import { getGumastaById } from "@/services/gumastaService";
+
+const CACHE_SCOPE_INNER_PENDING = "inner_gate:pending";
 import {
   getPrintTokenEnabled,
   getPrintTokenIncludePhoto,
 } from "@/services/settingsService";
 import { printGateToken, shareGateTokenPDF } from "@/services/printTokenService";
 import { COLORS, SHADOWS, SPACING, RADIUS } from "@/constants/config";
-import type { GateEntry } from "@/types/database";
+import type { GateEntry, Gumasta } from "@/types/database";
 import type { VerifyEntryResult } from "@/types";
 
 export default function InnerGateScreen() {
@@ -71,6 +75,7 @@ export default function InnerGateScreen() {
   const [entryCode, setEntryCode] = useState("");
   const [searching, setSearching] = useState(false);
   const [entry, setEntry] = useState<GateEntry | null>(null);
+  const [entryGumasta, setEntryGumasta] = useState<Gumasta | null>(null);
   const [verifiedCount, setVerifiedCount] = useState(0);
   const [adjustReason, setAdjustReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -94,14 +99,28 @@ export default function InnerGateScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [phoneValue, setPhoneValue] = useState("");
 
+  useEffect(() => {
+    if (entry?.gumasta_id) {
+      getGumastaById(entry.gumasta_id).then(setEntryGumasta).catch(() => setEntryGumasta(null));
+    } else {
+      setEntryGumasta(null);
+    }
+  }, [entry?.gumasta_id]);
+
   const loadPendingList = useCallback(async () => {
     setLoadingPending(true);
-    try {
-      const pending = await getPendingVerifications();
-      setPendingList(pending);
-    } finally {
-      setLoadingPending(false);
+    // Paint cached data immediately
+    const cached = await loadCachedGateEntries(CACHE_SCOPE_INNER_PENDING);
+    if (cached.length > 0) setPendingList(cached);
+
+    if (connectivity.isOnline()) {
+      try {
+        const pending = await getPendingVerifications();
+        setPendingList(pending);
+        await cacheGateEntries(CACHE_SCOPE_INNER_PENDING, pending);
+      } catch {}
     }
+    setLoadingPending(false);
   }, []);
 
   useFocusEffect(
@@ -804,6 +823,7 @@ export default function InnerGateScreen() {
                 )}
               </View>
             </View>
+            {entryGumasta && <GumastaInfoCard gumasta={entryGumasta} />}
 
             <View style={styles.declaredCount}>
               <Text style={styles.declaredLabel}>{t('supervisor.entry.declaredAtWestGate')}</Text>

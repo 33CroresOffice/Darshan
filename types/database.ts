@@ -159,12 +159,52 @@ export interface SlotQuota {
   userRemainingCount: number;
 }
 
+export type GumastaApprovalStatus = "pending" | "approved" | "rejected";
+export type GumastaApprovalAction = "approved" | "rejected";
+
+export interface Gumasta {
+  id: string;
+  sebayat_id: string;
+  name: string;
+  contact_number: string;
+  photo_url: string | null;
+  aadhar_card_url: string | null;
+  is_active: boolean;
+  approval_status: GumastaApprovalStatus;
+  rejection_reason: string | null;
+  approved_at: string | null;
+  rejected_at: string | null;
+  created_at: string;
+  updated_at: string;
+  sebayat?: SebayatRegistration;
+}
+
+export interface GumastaApproval {
+  id: string;
+  gumasta_id: string;
+  admin_id: string;
+  action: GumastaApprovalAction;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  admin?: { full_name: string | null; phone_number: string | null };
+}
+
+export interface GumastaVoteSummary {
+  totalAdmins: number;
+  approvedCount: number;
+  rejectedCount: number;
+  pendingCount: number;
+  approvals: GumastaApproval[];
+}
+
 export interface GateEntry {
   id: string;
   entry_code: string;
   qr_code_data: Record<string, unknown> | null;
   sebayat_id: string;
   slot_id: string | null;
+  gumasta_id: string | null;
   west_gate_supervisor_id: string | null;
   inner_gate_supervisor_id: string | null;
   declared_devotee_count: number;
@@ -189,6 +229,7 @@ export interface GateEntry {
   updated_at: string;
   sebayat?: SebayatRegistration;
   slot?: DarshanSlot;
+  gumasta?: Gumasta;
   west_gate_supervisor?: Profile;
   inner_gate_supervisor?: Profile;
 }

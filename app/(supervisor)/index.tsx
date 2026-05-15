@@ -22,11 +22,15 @@ import { getEntryStats, getPendingVerifications } from "@/services/entryService"
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import { SlotControlCard } from "@/components/slots/SlotControlCard";
 import { supabase } from "@/lib/supabase";
+import { cacheGateEntries, loadCachedGateEntries, connectivity } from "@/lib/offline";
 import { COLORS, SHADOWS, SPACING } from "@/constants/config";
 import type { EntryStats } from "@/types";
 import type { GateEntry } from "@/types/database";
 import { useTranslation } from "react-i18next";
 import { useLocalizedNumber } from "@/hooks/useLocalizedNumber";
+
+const CACHE_SCOPE_STATS = "supervisor:stats";
+const CACHE_SCOPE_PENDING = "supervisor:pending";
 
 export default function SupervisorDashboard() {
   const router = useRouter();
@@ -39,6 +43,22 @@ export default function SupervisorDashboard() {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
+    // Paint cached data immediately
+    const cachedPending = await loadCachedGateEntries(CACHE_SCOPE_PENDING);
+    if (cachedPending.length > 0) {
+      setPendingEntries(cachedPending.slice(0, 5));
+    }
+    const cachedStatsRaw = await loadCachedGateEntries(CACHE_SCOPE_STATS);
+    if (cachedStatsRaw.length > 0) {
+      const s = (cachedStatsRaw[0] as any) as EntryStats;
+      setStats(s);
+    }
+
+    if (!connectivity.isOnline()) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [statsData, pending] = await Promise.all([
         getEntryStats(),
@@ -46,6 +66,9 @@ export default function SupervisorDashboard() {
       ]);
       setStats(statsData);
       setPendingEntries(pending.slice(0, 5));
+      // Persist for offline use
+      await cacheGateEntries(CACHE_SCOPE_STATS, [statsData as any]);
+      await cacheGateEntries(CACHE_SCOPE_PENDING, pending);
     } catch (err) {
       console.error("Failed to fetch data:", err);
     } finally {

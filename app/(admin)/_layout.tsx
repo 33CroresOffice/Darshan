@@ -303,6 +303,18 @@ export default function AdminLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="gumasta-reviews"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="gumasta-review/[id]"
+        options={{
+          href: null,
+        }}
+      />
       </Tabs>
     </View>
   );

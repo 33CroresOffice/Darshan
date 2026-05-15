@@ -271,6 +271,119 @@ export async function updateOfflineModeEnabled(
   return { success: true, message: "Offline mode setting updated" };
 }
 
+export async function getGumastaEnabled(): Promise<boolean> {
+  const setting = await getSystemSetting("gumasta_enabled");
+  if (setting) {
+    const v = setting.setting_value?.value ?? setting.setting_value;
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") return v !== "false";
+  }
+  return false;
+}
+
+export async function updateGumastaEnabled(
+  enabled: boolean,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .update({ setting_value: { value: enabled }, updated_by: userId })
+    .eq("setting_key", "gumasta_enabled");
+
+  if (error) {
+    console.error("Error updating gumasta_enabled:", error);
+    return { success: false, message: normaliseError(error) };
+  }
+  return { success: true, message: "Gumasta setting updated" };
+}
+
+export async function getGumastaAllowedSebayatIds(): Promise<string[]> {
+  const setting = await getSystemSetting("gumasta_allowed_sebayat_ids");
+  if (setting) {
+    const v = setting.setting_value?.value ?? setting.setting_value;
+    if (Array.isArray(v)) return v;
+  }
+  return [];
+}
+
+export async function updateGumastaAllowedSebayatIds(
+  ids: string[],
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .update({ setting_value: { value: ids }, updated_by: userId })
+    .eq("setting_key", "gumasta_allowed_sebayat_ids");
+
+  if (error) {
+    console.error("Error updating gumasta_allowed_sebayat_ids:", error);
+    return { success: false, message: normaliseError(error) };
+  }
+  return { success: true, message: "Gumasta allowed sebayats updated" };
+}
+
+export async function isGumastaEnabledForSebayat(sebayatId: string): Promise<boolean> {
+  const globalEnabled = await getGumastaEnabled();
+  if (globalEnabled) return true;
+  const allowedIds = await getGumastaAllowedSebayatIds();
+  return allowedIds.includes(sebayatId);
+}
+
+export async function getGumastaApprovalRequired(): Promise<boolean> {
+  const setting = await getSystemSetting("gumasta_approval_required");
+  if (setting) {
+    const v = setting.setting_value?.value ?? setting.setting_value;
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") return v !== "false";
+  }
+  return true;
+}
+
+export async function updateGumastaApprovalRequired(
+  required: boolean,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .update({ setting_value: { value: required }, updated_by: userId })
+    .eq("setting_key", "gumasta_approval_required");
+
+  if (error) {
+    console.error("Error updating gumasta_approval_required:", error);
+    return { success: false, message: normaliseError(error) };
+  }
+  return { success: true, message: "Gumasta approval requirement updated" };
+}
+
+export type GumastaApprovalRule = "all_admins" | "majority" | "any_admin" | "superadmin_only";
+
+export async function getGumastaApprovalRule(): Promise<GumastaApprovalRule> {
+  const setting = await getSystemSetting("gumasta_approval_rule");
+  if (setting) {
+    const v = setting.setting_value?.value ?? setting.setting_value;
+    if (typeof v === "string" && ["all_admins", "majority", "any_admin", "superadmin_only"].includes(v)) {
+      return v as GumastaApprovalRule;
+    }
+  }
+  return "any_admin";
+}
+
+export async function updateGumastaApprovalRule(
+  rule: GumastaApprovalRule,
+  userId: string
+): Promise<{ success: boolean; message: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .update({ setting_value: { value: rule }, updated_by: userId })
+    .eq("setting_key", "gumasta_approval_rule");
+
+  if (error) {
+    console.error("Error updating gumasta_approval_rule:", error);
+    return { success: false, message: normaliseError(error) };
+  }
+  return { success: true, message: "Gumasta approval rule updated" };
+}
+
 export async function getAllSettings(): Promise<SystemSetting[]> {
   const { data, error } = await supabase
     .from("system_settings")

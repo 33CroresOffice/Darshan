@@ -12,6 +12,7 @@ import {
   Modal,
   ActivityIndicator,
   Pressable,
+  Image,
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -36,26 +37,29 @@ import { useAuth } from "@/context/AuthContext";
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import {
   getSebayatPendingTickets,
+  getSebayatTodayTickets,
   getTicketTimeRemaining,
   isTicketExpired,
 } from "@/services/entryService";
 import {
   createTicketResilient,
   cancelTicketResilient,
-  getTodayTicketsResilient,
   getEffectiveQuota,
 } from "@/services/offlineEntryService";
 import { getAvailableSlotsForToday, getSlotQuota } from "@/services/slotService";
 import { syncAllDataLocally } from "@/services/backgroundSyncService";
 import { supabase } from "@/lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { connectivity, normaliseError, saveCachedSlots, loadLastSyncTime } from "@/lib/offline";
+import { connectivity, normaliseError, saveCachedSlots, loadLastSyncTime, setCachedTickets, getCachedTickets } from "@/lib/offline";
+import { getActiveGumastasBySebayat, assignGumastaToAllPendingTickets } from "@/services/gumastaService";
+import { isGumastaEnabledForSebayat } from "@/services/settingsService";
+import { GumastaAssignButton } from "@/components/tickets/GumastaAssignButton";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
-import type { SebayatQuota, GateEntry, SlotQuota, EntryMode } from "@/types/database";
+import type { SebayatQuota, GateEntry, SlotQuota, EntryMode, Gumasta } from "@/types/database";
 
-const CACHE_QUOTA_KEY = (id: string) => `@sebayat:quota:${id}`;
-const CACHE_PENDING_KEY = (id: string) => `@sebayat:pending:${id}`;
-const CACHE_TODAY_KEY = (id: string) => `@sebayat:today:${id}`;
+const CACHE_QUOTA_KEY = (id: string, date: string) => `@sebayat:quota:${id}:${date}`;
+const CACHE_PENDING_KEY = (id: string, date: string) => `@sebayat:pending:${id}:${date}`;
+const CACHE_TODAY_KEY = (id: string, date: string) => `@sebayat:today:${id}:${date}`;
 const CACHE_SLOTS_KEY = (id: string) => `@sebayat:slots:${id}`;
 
 async function readCache<T>(key: string): Promise<T | null> {
@@ -93,56 +97,121 @@ export default function HomeScreen() {
   const [showSlots, setShowSlots] = useState(false);
   const [selectedEntryMode, setSelectedEntryMode] = useState<EntryMode>("west_gate");
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const isOnline = connectivity.isOnline();
+  const [isOnline, setIsOnline] = useState(() => connectivity.isOnline());
+  const [gumastas, setGumastas] = useState<Gumasta[]>([]);
+  const [gumastaEnabled, setGumastaEnabled] = useState(false);
+  const [bulkAssignModalVisible, setBulkAssignModalVisible] = useState(false);
 
   const loadQuota = useCallback(async () => {
     if (!registration?.id) return;
-    // getEffectiveQuota always tries the network first (regardless of
-    // connectivity flag), saves the ledger on success, and falls back to
-    // the cached ledger when offline. It is the single source of truth.
+    const todayDate = new Date().toISOString().split("T")[0];
+    // Paint today's cache immediately; skip if we have no dated entry (avoids painting stale yesterday data)
+    const cachedQuota = await readCache<SebayatQuota>(CACHE_QUOTA_KEY(registration.id, todayDate));
+    if (cachedQuota) setQuota(cachedQuota);
+    // Always attempt network — getEffectiveQuota handles offline internally
     try {
       const q = await getEffectiveQuota(registration.id);
       setQuota(q);
-      await writeCache(CACHE_QUOTA_KEY(registration.id), q);
+      await writeCache(CACHE_QUOTA_KEY(registration.id, todayDate), q);
     } catch {
-      const cached = await readCache<SebayatQuota>(CACHE_QUOTA_KEY(registration.id));
-      if (cached) setQuota(cached);
+      // Leave the cached value that was painted above
     }
   }, [registration?.id]);
 
+  // Cancellation token: each loadTickets call gets a unique id; only the latest
+  // call is allowed to commit state/cache writes. This prevents concurrent calls
+  // (useFocusEffect + Realtime + post-create) from interleaving and flickering.
+  const ticketCallId = useRef(0);
+
   const loadTickets = useCallback(async () => {
     if (!registration?.id) return;
-    // Paint from cache immediately
-    const [cachedPending, cachedToday] = await Promise.all([
-      readCache<GateEntry[]>(CACHE_PENDING_KEY(registration.id)),
-      readCache<GateEntry[]>(CACHE_TODAY_KEY(registration.id)),
+    const callId = ++ticketCallId.current;
+    const todayDate = new Date().toISOString().split("T")[0];
+
+    // Read both caches: UI cache and offline ticket cache
+    const [cachedToday, offlineToday] = await Promise.all([
+      readCache<GateEntry[]>(CACHE_TODAY_KEY(registration.id, todayDate)),
+      getCachedTickets(registration.id, todayDate),
     ]);
-    if (cachedPending) setPendingTickets(cachedPending);
-    if (cachedToday) setTodayTickets(cachedToday);
-    // Then fetch live data if possible
-    try {
-      if (connectivity.isOnline()) {
-        const [pending, today] = await Promise.all([
-          getSebayatPendingTickets(registration.id),
-          getTodayTicketsResilient(registration.id),
-        ]);
-        setPendingTickets(pending);
-        setTodayTickets(today);
-        await writeCache(CACHE_PENDING_KEY(registration.id), pending);
-        await writeCache(CACHE_TODAY_KEY(registration.id), today);
-      } else {
-        // Offline: getTodayTicketsResilient returns cache + local-only tickets
-        // Use the same list to derive both pending and today views so newly
-        // created offline tickets appear immediately without waiting for sync.
-        const allToday = await getTodayTicketsResilient(registration.id);
-        const todayDate = new Date().toISOString().split("T")[0];
-        const offlinePending = allToday.filter(
-          (t) => t.entry_date === todayDate && t.status === "pending"
+
+    // Merge: offline cache wins on duplicate ids
+    const uiById = new Map((cachedToday ?? []).map((t) => [t.id, t]));
+    const offlineById = new Map(offlineToday.map((t) => [t.id, t]));
+    const mergedMap = new Map([...uiById, ...offlineById]);
+    const cachedMerged = Array.from(mergedMap.values())
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+    // Paint cache immediately (stale-while-revalidate), but only when:
+    //  - not in a gumasta mutation (would overwrite optimistic state)
+    //  - cache has tickets that differ from current state (avoids pointless re-renders)
+    if (callId !== ticketCallId.current) return;
+    if (cachedMerged.length > 0 && !mutationLock.current) {
+      setTodayTickets((prev) => {
+        const prevIds = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        const nextIds = cachedMerged.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        return prevIds === nextIds ? prev : cachedMerged;
+      });
+      setPendingTickets((prev) => {
+        const filtered = cachedMerged.filter(
+          (tk) => tk.entry_date === todayDate && (tk.status === "pending" || tk.status === "registered")
         );
-        setPendingTickets(offlinePending);
-        setTodayTickets(allToday);
-      }
-    } catch {}
+        const prevIds = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        const nextIds = filtered.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        return prevIds === nextIds ? prev : filtered;
+      });
+    }
+
+    // Always attempt server fetch — try/catch handles offline gracefully
+    try {
+      const [serverPending, serverToday] = await Promise.all([
+        getSebayatPendingTickets(registration.id),
+        getSebayatTodayTickets(registration.id),
+      ]);
+
+      // Discard if a newer call has started
+      if (callId !== ticketCallId.current) return;
+
+      // Keep local-only tickets the server doesn't know about yet
+      const serverIds = new Set(serverToday.map((t) => t.id));
+      const localOnly = cachedMerged.filter((t) => t.id.startsWith("local_") && !serverIds.has(t.id));
+      const finalToday = [...localOnly, ...serverToday];
+
+      const serverPendingIds = new Set(serverPending.map((t) => t.id));
+      const extraPending = localOnly.filter(
+        (t) => t.status === "pending" && !serverPendingIds.has(t.id)
+      );
+      const finalPending = [...extraPending, ...serverPending];
+
+      setTodayTickets((prev) => {
+        let next = finalToday;
+        if (mutationLock.current) {
+          const optimistic = new Map(prev.map((t) => [t.id, t.gumasta_id]));
+          next = finalToday.map((t) => ({ ...t, gumasta_id: optimistic.has(t.id) ? optimistic.get(t.id) ?? null : t.gumasta_id }));
+        }
+        const prevSig = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        const nextSig = next.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        return prevSig === nextSig ? prev : next;
+      });
+      setPendingTickets((prev) => {
+        let next = finalPending;
+        if (mutationLock.current) {
+          const optimistic = new Map(prev.map((t) => [t.id, t.gumasta_id]));
+          next = finalPending.map((t) => ({ ...t, gumasta_id: optimistic.has(t.id) ? optimistic.get(t.id) ?? null : t.gumasta_id }));
+        }
+        const prevSig = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        const nextSig = next.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        return prevSig === nextSig ? prev : next;
+      });
+
+      await Promise.all([
+        writeCache(CACHE_TODAY_KEY(registration.id, todayDate), finalToday),
+        writeCache(CACHE_PENDING_KEY(registration.id, todayDate), finalPending),
+        setCachedTickets(registration.id, todayDate, finalToday),
+      ]);
+    } catch {
+      // Network failed — cache was already painted above, nothing to do
+      if (callId !== ticketCallId.current) return;
+    }
   }, [registration?.id]);
 
   const loadSlots = useCallback(async () => {
@@ -165,9 +234,32 @@ export default function HomeScreen() {
     } catch {}
   }, [registration?.id]);
 
+  useEffect(() => {
+    return connectivity.subscribe(() => {
+      const online = connectivity.isOnline();
+      setIsOnline(online);
+      if (online) {
+        loadQuota();
+        loadTickets();
+        loadSlots();
+      }
+    });
+  }, [loadQuota, loadTickets, loadSlots]);
+
+  // One-time migration: clear old undated cache keys so stale yesterday data never bleeds in
+  useEffect(() => {
+    if (!registration?.id) return;
+    const id = registration.id;
+    Promise.all([
+      AsyncStorage.removeItem(`@sebayat:quota:${id}`),
+      AsyncStorage.removeItem(`@sebayat:pending:${id}`),
+      AsyncStorage.removeItem(`@sebayat:today:${id}`),
+    ]).catch(() => {});
+  }, [registration?.id]);
+
   useFocusEffect(
     useCallback(() => {
-      refreshRegistration();
+      if (connectivity.isOnline()) refreshRegistration();
       loadQuota();
       loadTickets();
       loadSlots();
@@ -176,13 +268,20 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (pendingTickets.length > 0) {
-        setPendingTickets((prev) => [...prev]);
-      }
-    }, 30000);
+    if (!registration?.id) return;
+    isGumastaEnabledForSebayat(registration.id).then(setGumastaEnabled).catch(() => {});
+    getActiveGumastasBySebayat(registration.id).then(setGumastas).catch(() => {});
+  }, [registration?.id]);
+
+  const [tickTock, setTickTock] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTickTock((n) => n + 1), 30000);
     return () => clearInterval(interval);
-  }, [pendingTickets.length]);
+  }, []);
+
+  const realtimeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mutationLock = useRef(false);
+  const mutationLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!registration?.id) return;
@@ -193,12 +292,28 @@ export default function HomeScreen() {
         schema: "public",
         table: "gate_entries",
         filter: `sebayat_id=eq.${registration.id}`,
-      }, () => {
-        loadQuota();
-        loadTickets();
+      }, (payload: any) => {
+        if (!connectivity.isOnline()) return;
+        if (mutationLock.current) return;
+        // Skip if only gumasta_id changed — we handle that optimistically
+        const old = payload?.old ?? {};
+        const next = payload?.new ?? {};
+        const onlyGumastaChanged =
+          Object.keys({ ...old, ...next }).every(
+            (k) => k === "gumasta_id" || k === "updated_at" || old[k] === next[k]
+          );
+        if (onlyGumastaChanged) return;
+        if (realtimeDebounce.current) clearTimeout(realtimeDebounce.current);
+        realtimeDebounce.current = setTimeout(() => {
+          loadQuota();
+          loadTickets();
+        }, 500);
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (realtimeDebounce.current) clearTimeout(realtimeDebounce.current);
+      supabase.removeChannel(channel);
+    };
   }, [registration?.id, loadQuota, loadTickets]);
 
   const qrData = registration
@@ -214,6 +329,24 @@ export default function HomeScreen() {
     setRefreshing(true);
     await Promise.all([refreshRegistration(), loadQuota(), loadTickets(), loadSlots()]);
     setRefreshing(false);
+  };
+
+  const handleBulkAssignGumasta = async (gumastaId: string) => {
+    if (!registration?.id) return;
+    mutationLock.current = true;
+    if (mutationLockTimer.current) clearTimeout(mutationLockTimer.current);
+    mutationLockTimer.current = setTimeout(() => { mutationLock.current = false; }, 5000);
+    setPendingTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: gumastaId })));
+    setTodayTickets((prev) =>
+      prev.map((tk) => (tk.status === "pending" ? { ...tk, gumasta_id: gumastaId } : tk))
+    );
+    setBulkAssignModalVisible(false);
+    try {
+      await assignGumastaToAllPendingTickets(registration.id, gumastaId);
+    } catch {
+      setPendingTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: undefined })));
+      setTodayTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: undefined })));
+    }
   };
 
   const selectedSlotQuota = slotQuotas.find((q) => q.slot.id === selectedSlotId) ?? null;
@@ -235,6 +368,12 @@ export default function HomeScreen() {
     try {
       const result = await createTicketResilient(registration.id, devoteeCount, selectedSlotId, selectedEntryMode);
       if (result.success && result.entry) {
+        const todayDate = new Date().toISOString().split("T")[0];
+        // createTicketResilient already wrote to the offline cache via upsertCachedTicket.
+        // Sync the UI cache from offline cache so loadTickets sees the new ticket.
+        const freshOffline = await getCachedTickets(registration.id, todayDate);
+        await writeCache(CACHE_TODAY_KEY(registration.id, todayDate), freshOffline);
+
         setCreatedTicket(result.entry);
         setShowCreateModal(false);
         setSelectedEntryMode("west_gate");
@@ -347,6 +486,18 @@ export default function HomeScreen() {
           />
         }
       >
+        {registration?.approval_status === "approved" && !quota && !isOnline && (
+          <View style={styles.section}>
+            <View style={styles.offlinePlaceholderCard}>
+              <AlertCircle size={20} color={COLORS.warning} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.offlinePlaceholderTitle}>{t("app.home.offlineNoDataTitle")}</Text>
+                <Text style={styles.offlinePlaceholderBody}>{t("app.home.offlineNoDataBody")}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {registration?.approval_status === "approved" && quota && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("app.home.todayQuota")}</Text>
@@ -512,7 +663,17 @@ export default function HomeScreen() {
 
         {registration?.approval_status === "approved" && pendingTickets.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("app.home.activeTickets")}</Text>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>{t("app.home.activeTickets")}</Text>
+              {gumastaEnabled && gumastas.length > 0 && pendingTickets.some((tk) => tk.status === "pending") ? (
+                <TouchableOpacity
+                  style={styles.bulkAssignBtn}
+                  onPress={() => setBulkAssignModalVisible(true)}
+                >
+                  <Text style={styles.bulkAssignBtnText}>{t("gumasta.assignToAll")}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
             {pendingTickets.map((ticket) => {
               const expired = isTicketExpired(ticket);
               const isRegistered = ticket.status === "registered";
@@ -552,6 +713,28 @@ export default function HomeScreen() {
                           </Text>
                         </View>
                       )}
+                      {gumastaEnabled && !expired ? (
+                        <GumastaAssignButton
+                          ticketId={ticket.id}
+                          currentGumastaId={ticket.gumasta_id ?? null}
+                          currentGumastaName={gumastas.find((g) => g.id === ticket.gumasta_id)?.name ?? null}
+                          currentGumastaPhoto={gumastas.find((g) => g.id === ticket.gumasta_id)?.photo_url ?? null}
+                          gumastas={gumastas}
+                          onMutationStart={() => {
+                            mutationLock.current = true;
+                            if (mutationLockTimer.current) clearTimeout(mutationLockTimer.current);
+                            mutationLockTimer.current = setTimeout(() => { mutationLock.current = false; }, 5000);
+                          }}
+                          onAssigned={(gId) => {
+                            setPendingTickets((prev) =>
+                              prev.map((tk) => tk.id === ticket.id ? { ...tk, gumasta_id: gId ?? undefined } : tk)
+                            );
+                            setTodayTickets((prev) =>
+                              prev.map((tk) => tk.id === ticket.id ? { ...tk, gumasta_id: gId ?? undefined } : tk)
+                            );
+                          }}
+                        />
+                      ) : null}
                     </View>
                   </View>
                   {!isRegistered && (
@@ -630,7 +813,7 @@ export default function HomeScreen() {
         />
       )}
 
-      <Modal visible={showQRModal} animationType="fade" transparent>
+      {showQRModal && <Modal visible animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.qrModal}>
             <TouchableOpacity
@@ -656,9 +839,9 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
-      <Modal visible={showCreateModal} animationType="slide" transparent>
+      {showCreateModal && <Modal visible animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.createModal}>
             <TouchableOpacity
@@ -831,9 +1014,9 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
-      <Modal visible={!!createdTicket} animationType="fade" transparent>
+      {!!createdTicket && <Modal visible animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.successModal}>
             <View style={styles.successIcon}>
@@ -881,59 +1064,105 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
-      <Modal visible={showTicketModal} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.ticketModal}>
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => {
-                setShowTicketModal(false);
-                setSelectedTicket(null);
-              }}
-            >
-              <X size={24} color={COLORS.text} />
-            </TouchableOpacity>
+      {showTicketModal && (
+        <Modal visible animationType="fade" transparent>
+          <View style={styles.modalOverlay}>
+            <View style={styles.ticketModal}>
+              <TouchableOpacity
+                style={styles.modalClose}
+                onPress={() => {
+                  setShowTicketModal(false);
+                  setSelectedTicket(null);
+                }}
+              >
+                <X size={24} color={COLORS.text} />
+              </TouchableOpacity>
 
-            {selectedTicket && (
-              <>
-                <Text style={styles.modalTitle}>{t("app.home.ticketDetails")}</Text>
-                <View style={styles.qrContainer}>
-                  <QRCode
-                    value={JSON.stringify({ entryCode: selectedTicket.entry_code })}
-                    size={180}
-                  />
-                </View>
-                <View style={styles.ticketDetailsBox}>
-                  <Text style={styles.ticketCodeLarge}>{selectedTicket.entry_code}</Text>
-                  <Text style={styles.ticketDevoteesLarge}>
-                    {ln(selectedTicket.declared_devotee_count)} {selectedTicket.declared_devotee_count > 1 ? t("app.home.devotees") : t("app.home.devotee")}
-                  </Text>
-                  <View style={styles.ticketTimeRow}>
-                    <Clock size={14} color={isTicketExpired(selectedTicket) ? COLORS.error : COLORS.warning} />
-                    <Text style={[styles.ticketExpiry, isTicketExpired(selectedTicket) && { color: COLORS.error }]}>
-                      {formatTimeRemaining(selectedTicket)}
-                    </Text>
+              {selectedTicket && (
+                <>
+                  <Text style={styles.modalTitle}>{t("app.home.ticketDetails")}</Text>
+                  <View style={styles.qrContainer}>
+                    <QRCode
+                      value={JSON.stringify({ entryCode: selectedTicket.entry_code })}
+                      size={180}
+                    />
                   </View>
-                </View>
+                  <View style={styles.ticketDetailsBox}>
+                    <Text style={styles.ticketCodeLarge}>{selectedTicket.entry_code}</Text>
+                    <Text style={styles.ticketDevoteesLarge}>
+                      {ln(selectedTicket.declared_devotee_count)} {selectedTicket.declared_devotee_count > 1 ? t("app.home.devotees") : t("app.home.devotee")}
+                    </Text>
+                    <View style={styles.ticketTimeRow}>
+                      <Clock size={14} color={isTicketExpired(selectedTicket) ? COLORS.error : COLORS.warning} />
+                      <Text style={[styles.ticketExpiry, isTicketExpired(selectedTicket) && { color: COLORS.error }]}>
+                        {formatTimeRemaining(selectedTicket)}
+                      </Text>
+                    </View>
+                  </View>
 
-                <TouchableOpacity
-                  style={styles.cancelTicketButton}
-                  onPress={() => {
-                    handleCancelTicket(selectedTicket.id);
-                    setShowTicketModal(false);
-                    setSelectedTicket(null);
-                  }}
-                >
-                  <X size={18} color={COLORS.error} />
-                  <Text style={styles.cancelTicketText}>Cancel Ticket</Text>
-                </TouchableOpacity>
-              </>
-            )}
+                  <TouchableOpacity
+                    style={styles.cancelTicketButton}
+                    onPress={() => {
+                      handleCancelTicket(selectedTicket.id);
+                      setShowTicketModal(false);
+                      setSelectedTicket(null);
+                    }}
+                  >
+                    <X size={18} color={COLORS.error} />
+                    <Text style={styles.cancelTicketText}>Cancel Ticket</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
+
+      {bulkAssignModalVisible && (
+        <Modal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setBulkAssignModalVisible(false)}
+        >
+          <View style={styles.bulkAssignOverlay}>
+            <TouchableOpacity
+              style={styles.bulkAssignBackdrop}
+              activeOpacity={1}
+              onPress={() => setBulkAssignModalVisible(false)}
+            />
+            <View style={styles.bulkAssignSheet}>
+              <View style={styles.bulkAssignHeader}>
+                <Text style={styles.bulkAssignTitle}>{t("gumasta.assignToAll")}</Text>
+                <TouchableOpacity onPress={() => setBulkAssignModalVisible(false)}>
+                  <X size={20} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
+              {gumastas.map((g) => (
+                <TouchableOpacity
+                  key={g.id}
+                  style={styles.bulkAssignItem}
+                  onPress={() => handleBulkAssignGumasta(g.id)}
+                >
+                  <View style={styles.bulkAssignAvatar}>
+                    {g.photo_url ? (
+                      <Image source={{ uri: g.photo_url }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                    ) : (
+                      <Users size={18} color={COLORS.textMuted} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1, marginLeft: SPACING.sm }}>
+                    <Text style={styles.bulkAssignName}>{g.name}</Text>
+                    <Text style={styles.bulkAssignPhone}>{g.contact_number}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -1032,6 +1261,76 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.text,
     marginBottom: SPACING.sm,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SPACING.sm,
+  },
+  bulkAssignBtn: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  bulkAssignBtnText: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: "600",
+  },
+  bulkAssignOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  bulkAssignBackdrop: {
+    flex: 1,
+  },
+  bulkAssignSheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingBottom: 40,
+  },
+  bulkAssignHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  bulkAssignTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  bulkAssignItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  bulkAssignAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surfaceSecondary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  bulkAssignName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  bulkAssignPhone: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
   },
   collapsibleCard: {
     backgroundColor: COLORS.surface,
@@ -1141,6 +1440,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
     color: COLORS.text,
+  },
+  offlinePlaceholderCard: {
+    backgroundColor: COLORS.warning + "12",
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.warning + "40",
+  },
+  offlinePlaceholderTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  offlinePlaceholderBody: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
   },
   quotaCard: {
     backgroundColor: COLORS.surface,

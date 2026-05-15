@@ -30,6 +30,7 @@ import {
   Printer,
   Image,
   WifiOff,
+  UserCheck,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "@/services/authService";
@@ -51,8 +52,17 @@ import {
   updatePrintTokenIncludePhoto,
   getOfflineModeEnabled,
   updateOfflineModeEnabled,
+  getGumastaEnabled,
+  updateGumastaEnabled,
+  getGumastaAllowedSebayatIds,
+  updateGumastaAllowedSebayatIds,
+  getGumastaApprovalRequired,
+  updateGumastaApprovalRequired,
+  getGumastaApprovalRule,
+  updateGumastaApprovalRule,
   type OtpChannels,
   type ApprovalRule,
+  type GumastaApprovalRule,
 } from "@/services/settingsService";
 import { getOutboxCount } from "@/lib/offline";
 import {
@@ -114,6 +124,13 @@ export default function SettingsScreen() {
   const [offlineConfirmVisible, setOfflineConfirmVisible] = useState(false);
   const [offlineConfirmPendingCount, setOfflineConfirmPendingCount] = useState(0);
 
+  const [gumastaGlobalEnabled, setGumastaGlobalEnabled] = useState(false);
+  const [savingGumasta, setSavingGumasta] = useState(false);
+  const [gumastaApprovalRequired, setGumastaApprovalRequired] = useState(true);
+  const [savingGumastaApprovalRequired, setSavingGumastaApprovalRequired] = useState(false);
+  const [gumastaApprovalRule, setGumastaApprovalRule] = useState<GumastaApprovalRule>("any_admin");
+  const [savingGumastaApprovalRule, setSavingGumastaApprovalRule] = useState(false);
+
   const [slots, setSlots] = useState<DarshanSlot[]>([]);
   const [slotModalVisible, setSlotModalVisible] = useState(false);
   const [editingSlot, setEditingSlot] = useState<DarshanSlot | null>(null);
@@ -153,7 +170,7 @@ export default function SettingsScreen() {
 
   const loadSettings = async () => {
     try {
-      const [maxDevoteesValue, ticketValidityValue, otpChannelsValue, slotsEnabledValue, templeIdCardEnabledValue, approvalRuleValue, printTokenEnabledValue, printTokenPhotoValue, offlineModeValue] = await Promise.all([
+      const [maxDevoteesValue, ticketValidityValue, otpChannelsValue, slotsEnabledValue, templeIdCardEnabledValue, approvalRuleValue, printTokenEnabledValue, printTokenPhotoValue, offlineModeValue, gumastaEnabledValue, gumastaApprovalRequiredValue, gumastaApprovalRuleValue] = await Promise.all([
         getDailyBookingCapPerUser(),
         getTicketValidityMinutes(),
         getOtpChannels(),
@@ -163,6 +180,9 @@ export default function SettingsScreen() {
         getPrintTokenEnabled(),
         getPrintTokenIncludePhoto(),
         getOfflineModeEnabled(),
+        getGumastaEnabled(),
+        getGumastaApprovalRequired(),
+        getGumastaApprovalRule(),
       ]);
       setMaxDevotees(maxDevoteesValue.toString());
       setOriginalMaxDevotees(maxDevoteesValue);
@@ -175,6 +195,9 @@ export default function SettingsScreen() {
       setPrintTokenEnabled(printTokenEnabledValue);
       setPrintTokenIncludePhoto(printTokenPhotoValue);
       setOfflineModeEnabled(offlineModeValue);
+      setGumastaGlobalEnabled(gumastaEnabledValue);
+      setGumastaApprovalRequired(gumastaApprovalRequiredValue);
+      setGumastaApprovalRule(gumastaApprovalRuleValue);
     } catch (err) {
       console.error("Failed to load settings:", err);
     } finally {
@@ -248,6 +271,37 @@ export default function SettingsScreen() {
     const result = await updateOfflineModeEnabled(false, profile.id);
     if (result.success) setOfflineModeEnabled(false);
     setSavingOfflineMode(false);
+  };
+
+  const handleToggleGumasta = async (value: boolean) => {
+    if (!profile?.id) return;
+    setSavingGumasta(true);
+    const result = await updateGumastaEnabled(value, profile.id);
+    if (result.success) setGumastaGlobalEnabled(value);
+    setSavingGumasta(false);
+  };
+
+  const handleToggleGumastaApprovalRequired = async (value: boolean) => {
+    if (!profile?.id) return;
+    setSavingGumastaApprovalRequired(true);
+    const result = await updateGumastaApprovalRequired(value, profile.id);
+    if (result.success) setGumastaApprovalRequired(value);
+    setSavingGumastaApprovalRequired(false);
+  };
+
+  const handleSelectGumastaApprovalRule = async (rule: GumastaApprovalRule) => {
+    if (!profile?.id || rule === gumastaApprovalRule) return;
+    setSavingGumastaApprovalRule(true);
+    const result = await updateGumastaApprovalRule(rule, profile.id);
+    if (result.success) {
+      setGumastaApprovalRule(rule);
+      setSuccess("Gumasta approval rule updated");
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setError(result.message);
+      setTimeout(() => setError(null), 4000);
+    }
+    setSavingGumastaApprovalRule(false);
   };
 
   const handleSelectApprovalRule = async (rule: ApprovalRule) => {
@@ -1075,6 +1129,122 @@ export default function SettingsScreen() {
                 />
               </View>
             </View>
+
+            {isSuperAdmin && (
+              <>
+                <Text style={styles.sectionLabel}>Gumasta</Text>
+                <View style={styles.card}>
+                  <View style={styles.settingHeader}>
+                    <View style={[styles.settingIcon, { backgroundColor: gumastaGlobalEnabled ? "#ECFDF5" : COLORS.surfaceSecondary }]}>
+                      <UserCheck size={22} color={gumastaGlobalEnabled ? COLORS.success : COLORS.textMuted} />
+                    </View>
+                    <View style={styles.settingInfo}>
+                      <Text style={[styles.settingTitle, !gumastaGlobalEnabled && styles.settingTitleDisabled]}>
+                        Enable Gumasta Globally
+                      </Text>
+                      <Text style={styles.settingDescription}>
+                        {gumastaGlobalEnabled
+                          ? "All approved sebayats can assign gumastas to their tickets"
+                          : "Gumasta feature is disabled for all sebayats"}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={gumastaGlobalEnabled}
+                      onValueChange={handleToggleGumasta}
+                      disabled={savingGumasta}
+                      trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
+                      thumbColor={gumastaGlobalEnabled ? COLORS.primary : COLORS.textMuted}
+                    />
+                  </View>
+                </View>
+
+                <Text style={styles.sectionLabel}>Gumasta Approval</Text>
+                <View style={styles.card}>
+                  <View style={styles.settingHeader}>
+                    <View style={[styles.settingIcon, { backgroundColor: gumastaApprovalRequired ? "#EFF6FF" : COLORS.surfaceSecondary }]}>
+                      <ShieldCheck size={22} color={gumastaApprovalRequired ? COLORS.primary : COLORS.textMuted} />
+                    </View>
+                    <View style={styles.settingInfo}>
+                      <Text style={[styles.settingTitle, !gumastaApprovalRequired && styles.settingTitleDisabled]}>
+                        Require Approval for New Gumastas
+                      </Text>
+                      <Text style={styles.settingDescription}>
+                        {gumastaApprovalRequired
+                          ? "New gumastas must be approved by admins before they can be used"
+                          : "New gumastas are auto-approved immediately after creation"}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={gumastaApprovalRequired}
+                      onValueChange={handleToggleGumastaApprovalRequired}
+                      disabled={savingGumastaApprovalRequired}
+                      trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
+                      thumbColor={gumastaApprovalRequired ? COLORS.primary : COLORS.textMuted}
+                    />
+                  </View>
+
+                  {gumastaApprovalRequired && (
+                    <>
+                      <View style={styles.gumastaRuleSubheader}>
+                        <Text style={styles.approvalRuleSubheading}>Gumasta Approval Rule</Text>
+                        <Text style={styles.settingDescription}>
+                          Determines how many admins must approve a new gumasta
+                        </Text>
+                      </View>
+                      {(
+                        [
+                          {
+                            key: "all_admins" as GumastaApprovalRule,
+                            label: "All Admins Must Approve",
+                            description: "Every active admin must cast an approval vote",
+                          },
+                          {
+                            key: "majority" as GumastaApprovalRule,
+                            label: "Majority Approval",
+                            description: "More than half of admins approving immediately approves",
+                          },
+                          {
+                            key: "any_admin" as GumastaApprovalRule,
+                            label: "Any Admin Approves",
+                            description: "The first admin to approve immediately activates the gumasta",
+                          },
+                          {
+                            key: "superadmin_only" as GumastaApprovalRule,
+                            label: "Super Admin Only",
+                            description: "Only a direct Super Admin approval activates the gumasta",
+                          },
+                        ] as { key: GumastaApprovalRule; label: string; description: string }[]
+                      ).map((option, index, arr) => {
+                        const isActive = gumastaApprovalRule === option.key;
+                        return (
+                          <TouchableOpacity
+                            key={option.key}
+                            style={[
+                              styles.approvalRuleOption,
+                              isActive && styles.approvalRuleOptionActive,
+                              index < arr.length - 1 && styles.approvalRuleOptionBorder,
+                            ]}
+                            onPress={() => handleSelectGumastaApprovalRule(option.key)}
+                            activeOpacity={0.7}
+                            disabled={savingGumastaApprovalRule}
+                          >
+                            <View style={[styles.approvalRuleRadio, isActive && styles.approvalRuleRadioActive]}>
+                              {isActive && <View style={styles.approvalRuleRadioDot} />}
+                            </View>
+                            <View style={styles.approvalRuleOptionText}>
+                              <Text style={[styles.approvalRuleOptionLabel, isActive && styles.approvalRuleOptionLabelActive]}>
+                                {option.label}
+                              </Text>
+                              <Text style={styles.approvalRuleOptionDesc}>{option.description}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  )}
+                </View>
+              </>
+            )}
 
             <Text style={styles.sectionLabel}>Darshan Slots</Text>
 
@@ -1950,6 +2120,20 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+  },
+  approvalRuleSubheading: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  gumastaRuleSubheader: {
+    paddingTop: 16,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    marginTop: 12,
   },
   approvalRuleOption: {
     flexDirection: "row",

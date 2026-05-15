@@ -136,10 +136,7 @@ export async function getSebayatDailyQuota(
     .eq("entry_date", date)
     .neq("status", "cancelled");
 
-  if (error) {
-    console.error("Error fetching quota:", error);
-    return { maxLimit, usedCount: 0, remainingCount: maxLimit };
-  }
+  if (error) throw new Error(error.message);
 
   const usedCount = (data || []).reduce((sum, entry) => {
     return sum + (entry.verified_devotee_count ?? entry.declared_devotee_count);
@@ -992,10 +989,7 @@ export async function getSebayatPendingTickets(
     .in("status", ["pending", "registered"])
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Error fetching pending tickets:", error);
-    return [];
-  }
+  if (error) throw new Error(error.message);
 
   return data || [];
 }
@@ -1012,10 +1006,7 @@ export async function getSebayatTodayTickets(
     .eq("entry_date", today)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Error fetching today tickets:", error);
-    return [];
-  }
+  if (error) throw new Error(error.message);
 
   return data || [];
 }
@@ -1054,10 +1045,7 @@ export async function getSebayatEntriesByDateRange(
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Error fetching sebayat entries by date range:", error);
-    return [];
-  }
+  if (error) throw new Error(error.message);
 
   return data || [];
 }

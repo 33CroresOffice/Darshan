@@ -21,7 +21,10 @@ import {
 import { getTodayEntries } from "@/services/entryService";
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import { supabase } from "@/lib/supabase";
+import { cacheGateEntries, loadCachedGateEntries, connectivity } from "@/lib/offline";
 import { COLORS, SHADOWS, SPACING } from "@/constants/config";
+
+const CACHE_SCOPE_TODAY = "supervisor:today";
 import type { GateEntry, EntryStatus } from "@/types/database";
 import { useTranslation } from "react-i18next";
 
@@ -52,9 +55,19 @@ export default function HistoryScreen() {
   };
 
   const fetchEntries = useCallback(async () => {
+    // Paint cached data immediately
+    const cached = await loadCachedGateEntries(CACHE_SCOPE_TODAY);
+    if (cached.length > 0) setEntries(cached);
+
+    if (!connectivity.isOnline()) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const data = await getTodayEntries();
       setEntries(data);
+      await cacheGateEntries(CACHE_SCOPE_TODAY, data);
     } catch (err) {
       console.error("Failed to fetch entries:", err);
     } finally {
