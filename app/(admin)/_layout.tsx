@@ -5,6 +5,7 @@ import { COLORS, RADIUS, SPACING } from "@/constants/config";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { OfflineBanner } from "@/components/layout/OfflineBanner";
 
 function GlobalHeader() {
   const router = useRouter();
@@ -82,6 +83,7 @@ export default function AdminLayout() {
   return (
     <View style={styles.container}>
       <GlobalHeader />
+      <OfflineBanner />
       <Tabs
         screenOptions={{
           headerShown: false,

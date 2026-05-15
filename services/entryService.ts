@@ -12,7 +12,7 @@ import type { CreateEntryResult, VerifyEntryResult, EntryStats } from "@/types";
 import { getDailyBookingCapPerUser, getTicketValidityMinutes } from "./settingsService";
 import { getSlotBookingCount, getUserSlotBookingCount } from "./slotService";
 import { getActiveSession } from "./slotSessionService";
-import { buildIdempotencyKey, getDeviceId } from "@/lib/offline";
+import { buildIdempotencyKey, getDeviceId, normaliseError } from "@/lib/offline";
 
 function generateEntryCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -205,7 +205,7 @@ export async function registerWestGateEntry(
 
   if (error) {
     console.error("Error creating entry:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   await createAuditLog(entry.id, "created", supervisorId, "west_gate", null, {
@@ -309,7 +309,7 @@ export async function verifyInnerGateEntry(
 
   if (error) {
     console.error("Error verifying entry:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   const actionType: EntryAction =
@@ -386,7 +386,7 @@ export async function adjustDevoteeCount(
 
   if (error) {
     console.error("Error adjusting count:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   await createAuditLog(
@@ -432,7 +432,7 @@ export async function flagEntryDiscrepancy(
 
   if (error) {
     console.error("Error flagging entry:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   await createAuditLog(
@@ -481,7 +481,7 @@ export async function cancelEntry(
 
   if (error) {
     console.error("Error cancelling entry:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   await createAuditLog(
@@ -754,7 +754,7 @@ export async function createDarshanTicket(
 
   if (error) {
     console.error("Error creating ticket:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return {
@@ -808,7 +808,7 @@ export async function updateDarshanTicketCount(
     .eq("id", entryId);
 
   if (error) {
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: "Ticket updated successfully" };
@@ -858,7 +858,7 @@ export async function updateDarshanTicketCountByStaff(
     .eq("id", entryId);
 
   if (error) {
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   await createAuditLog(
@@ -903,7 +903,7 @@ export async function cancelDarshanTicket(
 
   if (error) {
     console.error("Error cancelling ticket:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: "Ticket cancelled successfully" };
@@ -963,7 +963,7 @@ export async function acknowledgeWestGateEntry(
 
   if (error) {
     console.error("Error acknowledging entry:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   await createAuditLog(entryId, "created", supervisorId, "west_gate", null, {

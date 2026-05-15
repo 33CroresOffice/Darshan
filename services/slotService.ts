@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { normaliseError } from "@/lib/offline";
 import { getDarshanSlotsEnabled } from "@/services/settingsService";
 import type { DarshanSlot, SlotQuota } from "@/types/database";
 
@@ -100,7 +101,7 @@ export async function createSlot(
 
   if (error) {
     console.error("Error creating slot:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: "Slot created successfully", slot: data };
@@ -135,7 +136,7 @@ export async function updateSlot(
 
   if (error) {
     console.error("Error updating slot:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: "Slot updated successfully", slot: data };
@@ -152,7 +153,7 @@ export async function toggleSlotActive(
 
   if (error) {
     console.error("Error toggling slot status:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: isActive ? "Slot activated" : "Slot deactivated" };

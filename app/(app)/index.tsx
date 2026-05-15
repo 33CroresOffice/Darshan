@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocalizedNumber } from "@/hooks/useLocalizedNumber";
 import { useSlotName } from "@/hooks/useSlotName";
@@ -33,21 +33,41 @@ import {
 import { FeedbackModal } from "@/components/feedback/FeedbackModal";
 import QRCode from "react-native-qrcode-svg";
 import { useAuth } from "@/context/AuthContext";
-import { StatusBadge } from "@/components/display/StatusBadge";
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import {
-  getSebayatDailyQuota,
   getSebayatPendingTickets,
-  getSebayatTodayTickets,
-  createDarshanTicket,
-  cancelDarshanTicket,
   getTicketTimeRemaining,
   isTicketExpired,
 } from "@/services/entryService";
+import {
+  createTicketResilient,
+  cancelTicketResilient,
+  getTodayTicketsResilient,
+  getEffectiveQuota,
+} from "@/services/offlineEntryService";
 import { getAvailableSlotsForToday, getSlotQuota } from "@/services/slotService";
+import { syncAllDataLocally } from "@/services/backgroundSyncService";
 import { supabase } from "@/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { connectivity, normaliseError, saveCachedSlots, loadLastSyncTime } from "@/lib/offline";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
-import type { SebayatQuota, GateEntry, DarshanSlot, SlotQuota, EntryMode } from "@/types/database";
+import type { SebayatQuota, GateEntry, SlotQuota, EntryMode } from "@/types/database";
+
+const CACHE_QUOTA_KEY = (id: string) => `@sebayat:quota:${id}`;
+const CACHE_PENDING_KEY = (id: string) => `@sebayat:pending:${id}`;
+const CACHE_TODAY_KEY = (id: string) => `@sebayat:today:${id}`;
+const CACHE_SLOTS_KEY = (id: string) => `@sebayat:slots:${id}`;
+
+async function readCache<T>(key: string): Promise<T | null> {
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch { return null; }
+}
+
+async function writeCache(key: string, value: unknown) {
+  try { await AsyncStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
 
 export default function HomeScreen() {
   const { t } = useTranslation();
@@ -72,33 +92,77 @@ export default function HomeScreen() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [showSlots, setShowSlots] = useState(false);
   const [selectedEntryMode, setSelectedEntryMode] = useState<EntryMode>("west_gate");
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const isOnline = connectivity.isOnline();
 
   const loadQuota = useCallback(async () => {
-    if (registration?.id) {
-      const quotaData = await getSebayatDailyQuota(registration.id);
-      setQuota(quotaData);
+    if (!registration?.id) return;
+    // getEffectiveQuota always tries the network first (regardless of
+    // connectivity flag), saves the ledger on success, and falls back to
+    // the cached ledger when offline. It is the single source of truth.
+    try {
+      const q = await getEffectiveQuota(registration.id);
+      setQuota(q);
+      await writeCache(CACHE_QUOTA_KEY(registration.id), q);
+    } catch {
+      const cached = await readCache<SebayatQuota>(CACHE_QUOTA_KEY(registration.id));
+      if (cached) setQuota(cached);
     }
   }, [registration?.id]);
 
   const loadTickets = useCallback(async () => {
-    if (registration?.id) {
-      const [pending, today] = await Promise.all([
-        getSebayatPendingTickets(registration.id),
-        getSebayatTodayTickets(registration.id),
-      ]);
-      setPendingTickets(pending);
-      setTodayTickets(today);
-    }
+    if (!registration?.id) return;
+    // Paint from cache immediately
+    const [cachedPending, cachedToday] = await Promise.all([
+      readCache<GateEntry[]>(CACHE_PENDING_KEY(registration.id)),
+      readCache<GateEntry[]>(CACHE_TODAY_KEY(registration.id)),
+    ]);
+    if (cachedPending) setPendingTickets(cachedPending);
+    if (cachedToday) setTodayTickets(cachedToday);
+    // Then fetch live data if possible
+    try {
+      if (connectivity.isOnline()) {
+        const [pending, today] = await Promise.all([
+          getSebayatPendingTickets(registration.id),
+          getTodayTicketsResilient(registration.id),
+        ]);
+        setPendingTickets(pending);
+        setTodayTickets(today);
+        await writeCache(CACHE_PENDING_KEY(registration.id), pending);
+        await writeCache(CACHE_TODAY_KEY(registration.id), today);
+      } else {
+        // Offline: getTodayTicketsResilient returns cache + local-only tickets
+        // Use the same list to derive both pending and today views so newly
+        // created offline tickets appear immediately without waiting for sync.
+        const allToday = await getTodayTicketsResilient(registration.id);
+        const todayDate = new Date().toISOString().split("T")[0];
+        const offlinePending = allToday.filter(
+          (t) => t.entry_date === todayDate && t.status === "pending"
+        );
+        setPendingTickets(offlinePending);
+        setTodayTickets(allToday);
+      }
+    } catch {}
   }, [registration?.id]);
 
   const loadSlots = useCallback(async () => {
     if (!registration?.id) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const data = await getAvailableSlotsForToday();
-    const quotas = await Promise.all(
-      data.map((slot) => getSlotQuota(slot, registration.id, today))
-    );
-    setSlotQuotas(quotas);
+    // Paint from cache immediately
+    const cachedSlots = await readCache<SlotQuota[]>(CACHE_SLOTS_KEY(registration.id));
+    if (cachedSlots) setSlotQuotas(cachedSlots);
+    try {
+      if (connectivity.isOnline()) {
+        const today = new Date().toISOString().slice(0, 10);
+        const data = await getAvailableSlotsForToday();
+        const quotas = await Promise.all(
+          data.map((slot) => getSlotQuota(slot, registration.id, today))
+        );
+        setSlotQuotas(quotas);
+        // Save to both UI cache and persistent offline slots cache
+        await writeCache(CACHE_SLOTS_KEY(registration.id), quotas);
+        await saveCachedSlots(registration.id, today, quotas);
+      }
+    } catch {}
   }, [registration?.id]);
 
   useFocusEffect(
@@ -107,6 +171,7 @@ export default function HomeScreen() {
       loadQuota();
       loadTickets();
       loadSlots();
+      loadLastSyncTime().then(setLastSyncTime);
     }, [refreshRegistration, loadQuota, loadTickets, loadSlots])
   );
 
@@ -167,14 +232,19 @@ export default function HomeScreen() {
     setCreating(true);
     setCreateError(null);
 
-    const result = await createDarshanTicket(registration.id, devoteeCount, selectedSlotId, selectedEntryMode);
-    if (result.success && result.entry) {
-      setCreatedTicket(result.entry);
-      setShowCreateModal(false);
-      setSelectedEntryMode("west_gate");
-      await Promise.all([loadQuota(), loadTickets()]);
-    } else {
-      setCreateError(result.message);
+    try {
+      const result = await createTicketResilient(registration.id, devoteeCount, selectedSlotId, selectedEntryMode);
+      if (result.success && result.entry) {
+        setCreatedTicket(result.entry);
+        setShowCreateModal(false);
+        setSelectedEntryMode("west_gate");
+        await Promise.all([loadQuota(), loadTickets()]);
+        loadLastSyncTime().then(setLastSyncTime);
+      } else {
+        setCreateError(typeof result.message === "string" ? result.message : normaliseError(result.message));
+      }
+    } catch (err) {
+      setCreateError(normaliseError(err));
     }
     setCreating(false);
   };
@@ -183,10 +253,15 @@ export default function HomeScreen() {
     if (!registration?.id) return;
     setCancelling(ticketId);
 
-    const result = await cancelDarshanTicket(ticketId, registration.id);
-    if (result.success) {
-      await Promise.all([loadQuota(), loadTickets()]);
-    }
+    const ticket = [...pendingTickets, ...todayTickets].find((t) => t.id === ticketId);
+    try {
+      if (ticket) {
+        const result = await cancelTicketResilient(ticket, registration.id);
+        if (result.success) {
+          await Promise.all([loadQuota(), loadTickets()]);
+        }
+      }
+    } catch {}
     setCancelling(null);
   };
 
@@ -318,6 +393,13 @@ export default function HomeScreen() {
               >
                 {t("app.home.slotsRemaining", { count: quota.remainingCount })}
               </Text>
+              {!isOnline && lastSyncTime && (
+                <Text style={styles.lastSyncText}>
+                  {t("app.home.lastSynced", {
+                    time: new Date(lastSyncTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                  })}
+                </Text>
+              )}
             </View>
 
             {quota.remainingCount > 0 && !allSlotsFull && (
@@ -1109,6 +1191,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
+  },
+  lastSyncText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginTop: 4,
   },
   modalOverlay: {
     flex: 1,

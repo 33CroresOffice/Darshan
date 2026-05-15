@@ -1,24 +1,93 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { AppState, AppStateStatus, View, ActivityIndicator, StyleSheet, Platform } from "react-native";
 import { useFrameworkReady } from "@/hooks/useFrameworkReady";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { SplashScreen } from "@/components/SplashScreen";
 import { COLORS } from "@/constants/config";
+import { connectivity, probeConnectivity } from "@/lib/offline";
+import { syncAllDataLocally } from "@/services/backgroundSyncService";
 import "@/lib/i18n";
+
+// Run a global connectivity probe on startup and keep it updated via
+// navigator.onLine events (web) + a periodic ping (all platforms).
+// When online, also triggers a background data sync so local caches
+// stay current before the device goes offline.
+function useGlobalConnectivity(sebayatId: string | null | undefined) {
+  const wasOnlineRef = useRef(connectivity.isOnline());
+
+  useEffect(() => {
+    const triggerSync = (id: string) => {
+      syncAllDataLocally(id).catch(() => {});
+    };
+
+    // Probe immediately so the singleton reflects real state before any
+    // screen mounts — this prevents the app from crashing on cold start
+    // because it assumed it was online.
+    probeConnectivity().then((online) => {
+      if (online && sebayatId) triggerSync(sebayatId);
+    });
+
+    // Web: react to browser online/offline events instantly
+    const handleOnline = () => {
+      connectivity.setOnline(true);
+      probeConnectivity().then((online) => {
+        if (online && sebayatId) triggerSync(sebayatId);
+      });
+    };
+    const handleOffline = () => connectivity.setOnline(false);
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+    }
+
+    // All platforms: re-probe every 15 seconds so we catch intermittent drops.
+    // On reconnect (was offline, now online), sync immediately.
+    const interval = setInterval(async () => {
+      const online = await probeConnectivity();
+      const wasOnline = wasOnlineRef.current;
+      wasOnlineRef.current = online;
+      if (online && sebayatId) {
+        // Always sync every 15-second tick while connected, and especially
+        // on reconnect so the cache is immediately refreshed.
+        triggerSync(sebayatId);
+      }
+      if (!wasOnline && online && sebayatId) {
+        // Reconnect: also fires through the sync above, no duplicate needed
+      }
+    }, 15000);
+
+    // AppState: sync when app comes back to foreground from background
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === "active" && sebayatId && connectivity.isOnline()) {
+        triggerSync(sebayatId);
+      }
+    };
+    const appStateSub = AppState.addEventListener("change", handleAppState);
+
+    return () => {
+      clearInterval(interval);
+      appStateSub.remove();
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      }
+    };
+  }, [sebayatId]);
+}
 
 function RootLayoutNav() {
   const { session, profile, registration, registrationLoaded, loading } = useAuth();
+  useGlobalConnectivity(registration?.id);
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
-    // segments[0] is undefined until Expo Router resolves the initial URL —
-    // bail out so we never redirect away from the current deep-link on mount.
     if (segments[0] === undefined) return;
 
     const inAuthGroup = segments[0] === "(auth)";
@@ -49,9 +118,9 @@ function RootLayoutNav() {
           router.replace("/(supervisor)");
         }
       } else if (registrationLoaded && !registration) {
-        // Only redirect to onboarding when we've confirmed (via a successful
-        // server fetch) that no registration exists. If offline and the fetch
-        // never completed, registrationLoaded is false so we stay put.
+        // Only redirect to onboarding once the server confirmed no registration
+        // exists. If offline the fetch never succeeds, so registrationLoaded
+        // stays false and we stay on the current screen.
         if (!inOnboardingGroup) {
           router.replace("/(onboarding)/registration");
         }
@@ -59,11 +128,11 @@ function RootLayoutNav() {
         if (!inPendingGroup && !inOnboardingGroup) {
           router.replace("/(pending)/status");
         }
-      } else if (registration.approval_status === "rejected") {
+      } else if (registration?.approval_status === "rejected") {
         if (!inPendingGroup && !inOnboardingGroup) {
           router.replace("/(pending)/rejected");
         }
-      } else if (registration.approval_status === "approved") {
+      } else if (registration?.approval_status === "approved") {
         if (!inAppGroup) {
           router.replace("/(app)");
         }

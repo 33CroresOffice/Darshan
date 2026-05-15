@@ -7,6 +7,9 @@ const OUTBOX_KEY = "@offline:outbox:v1";
 const QUOTA_KEY_PREFIX = "@offline:quota:";
 const TICKETS_KEY_PREFIX = "@offline:tickets:";
 const GATE_CACHE_PREFIX = "@offline:gate:";
+const SETTINGS_CACHE_KEY = "@offline:settings";
+const SLOTS_CACHE_KEY_PREFIX = "@offline:slots:";
+const LAST_SYNC_KEY = "@offline:last_sync";
 
 const ENTRY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -159,6 +162,51 @@ export async function upsertCachedTicket(sebayatId: string, date: string, ticket
   if (idx >= 0) list[idx] = ticket;
   else list.unshift(ticket);
   await setCachedTickets(sebayatId, date, list);
+}
+
+// ---------- Settings cache ----------
+
+export interface CachedSettings {
+  dailyBookingCapPerUser: number;
+  ticketValidityMinutes: number;
+  maxDevoteesPerDay: number;
+  offlineModeEnabled: boolean;
+  darshanSlotsEnabled: boolean;
+  savedAt: string;
+}
+
+export async function saveSettingsCache(settings: CachedSettings): Promise<void> {
+  await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
+}
+
+export async function loadSettingsCache(): Promise<CachedSettings | null> {
+  const raw = await AsyncStorage.getItem(SETTINGS_CACHE_KEY);
+  return raw ? (JSON.parse(raw) as CachedSettings) : null;
+}
+
+// ---------- Slots cache ----------
+
+function slotsKey(sebayatId: string, date: string) {
+  return `${SLOTS_CACHE_KEY_PREFIX}${sebayatId}:${date}`;
+}
+
+export async function saveCachedSlots(sebayatId: string, date: string, slots: unknown[]): Promise<void> {
+  await AsyncStorage.setItem(slotsKey(sebayatId, date), JSON.stringify(slots));
+}
+
+export async function loadCachedSlots<T>(sebayatId: string, date: string): Promise<T[] | null> {
+  const raw = await AsyncStorage.getItem(slotsKey(sebayatId, date));
+  return raw ? (JSON.parse(raw) as T[]) : null;
+}
+
+// ---------- Last sync timestamp ----------
+
+export async function saveLastSyncTime(): Promise<void> {
+  await AsyncStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+}
+
+export async function loadLastSyncTime(): Promise<string | null> {
+  return AsyncStorage.getItem(LAST_SYNC_KEY);
 }
 
 // ---------- Gate-side cache (for supervisors) ----------
@@ -349,6 +397,28 @@ async function runInnerVerify(p: Record<string, unknown>) {
     p_reason: p.reason ?? null,
   });
   if (error) throw new Error(error.message);
+}
+
+// ---------- Network error normaliser ----------
+
+const NETWORK_ERROR_PATTERNS = [
+  "network request failed",
+  "failed to fetch",
+  "networkerror",
+  "load failed",
+  "the internet connection appears to be offline",
+];
+
+/**
+ * Returns a clean user-facing message for network errors so raw
+ * "TypeError: Network request failed" never reaches the UI.
+ */
+export function normaliseError(err: unknown): string {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (NETWORK_ERROR_PATTERNS.some((p) => msg.includes(p))) {
+    return "You are offline. Please check your internet connection.";
+  }
+  return err instanceof Error ? err.message : String(err);
 }
 
 // ---------- Helpers ----------

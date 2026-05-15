@@ -27,6 +27,10 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { getSebayatEntriesByDateRange } from "@/services/entryService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const CACHE_HISTORY_KEY = (id: string, from: string, to: string) =>
+  `@sebayat:history:${id}:${from}:${to}`;
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { GateEntry } from "@/types/database";
 
@@ -321,13 +325,36 @@ export default function HistoryScreen() {
     async (from: string, to: string) => {
       if (!registration?.id) return;
       setLoading(true);
-      const data = await getSebayatEntriesByDateRange(registration.id, from, to);
-      setEntries(data);
+
+      // Paint from cache immediately so navigating offline doesn't blank the screen
+      try {
+        const raw = await AsyncStorage.getItem(CACHE_HISTORY_KEY(registration.id, from, to));
+        if (raw) {
+          const cached = JSON.parse(raw) as GateEntry[];
+          setEntries(cached);
+          const groups = groupByDate(cached);
+          const dates = new Set<string>();
+          if (groups.length > 0) dates.add(groups[0].date);
+          setExpandedDates(dates);
+        }
+      } catch {}
+
+      // Then fetch live data if possible
+      try {
+        const data = await getSebayatEntriesByDateRange(registration.id, from, to);
+        setEntries(data);
+        const groups = groupByDate(data);
+        const dates = new Set<string>();
+        if (groups.length > 0) dates.add(groups[0].date);
+        setExpandedDates(dates);
+        // Persist for next offline visit
+        await AsyncStorage.setItem(
+          CACHE_HISTORY_KEY(registration.id, from, to),
+          JSON.stringify(data)
+        );
+      } catch {}
+
       setLoading(false);
-      const groups = groupByDate(data);
-      const dates = new Set<string>();
-      if (groups.length > 0) dates.add(groups[0].date);
-      setExpandedDates(dates);
     },
     [registration?.id]
   );

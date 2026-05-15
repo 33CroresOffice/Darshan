@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { normaliseError, loadSettingsCache } from "@/lib/offline";
 import type { SystemSetting } from "@/types/database";
 
 export async function getSystemSetting(key: string): Promise<SystemSetting | null> {
@@ -21,6 +22,8 @@ export async function getMaxDevoteesPerDay(): Promise<number> {
   if (setting && typeof setting.setting_value?.value === "number") {
     return setting.setting_value.value;
   }
+  const cached = await loadSettingsCache();
+  if (cached) return cached.maxDevoteesPerDay;
   return 50;
 }
 
@@ -28,14 +31,14 @@ export async function getTicketValidityMinutes(): Promise<number> {
   const setting = await getSystemSetting("ticket_validity_minutes");
   if (setting) {
     const value = setting.setting_value?.value ?? setting.setting_value;
-    if (typeof value === "number") {
-      return value;
-    }
+    if (typeof value === "number") return value;
     if (typeof value === "string") {
       const parsed = parseInt(value, 10);
       if (!isNaN(parsed)) return parsed;
     }
   }
+  const cached = await loadSettingsCache();
+  if (cached) return cached.ticketValidityMinutes;
   return 120;
 }
 
@@ -54,7 +57,7 @@ export async function updateSystemSetting(
 
   if (error) {
     console.error("Error updating setting:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: "Setting updated successfully" };
@@ -70,7 +73,9 @@ export async function getDailyBookingCapPerUser(): Promise<number> {
       if (!isNaN(parsed)) return parsed;
     }
   }
-  return 30;
+  const cached = await loadSettingsCache();
+  if (cached) return cached.dailyBookingCapPerUser;
+  return 20;
 }
 
 export type OtpChannels = { whatsapp: boolean; sms: boolean };
@@ -98,7 +103,7 @@ export async function updateOtpChannels(
 
   if (error) {
     console.error("Error updating otp_channels:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
   return { success: true, message: "OTP channel settings updated" };
 }
@@ -124,7 +129,7 @@ export async function updateTempleIdCardEnabled(
 
   if (error) {
     console.error("Error updating temple_id_card_enabled:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
   return { success: true, message: "Temple ID card setting updated" };
 }
@@ -136,6 +141,8 @@ export async function getDarshanSlotsEnabled(): Promise<boolean> {
     if (typeof v === "boolean") return v;
     if (typeof v === "string") return v !== "false";
   }
+  const cached = await loadSettingsCache();
+  if (cached) return cached.darshanSlotsEnabled;
   return true;
 }
 
@@ -150,7 +157,7 @@ export async function updateDarshanSlotsEnabled(
 
   if (error) {
     console.error("Error updating darshan_slots_enabled:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
   return { success: true, message: "Darshan slots setting updated" };
 }
@@ -179,7 +186,7 @@ export async function updateApprovalRule(
 
   if (error) {
     console.error("Error updating approval_rule:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
   return { success: true, message: "Approval rule updated" };
 }
@@ -205,7 +212,7 @@ export async function updatePrintTokenEnabled(
 
   if (error) {
     console.error("Error updating print_token_enabled:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
   return { success: true, message: "Print token setting updated" };
 }
@@ -231,7 +238,7 @@ export async function updatePrintTokenIncludePhoto(
 
   if (error) {
     console.error("Error updating print_token_include_photo:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
   return { success: true, message: "Print token photo setting updated" };
 }
@@ -243,6 +250,8 @@ export async function getOfflineModeEnabled(): Promise<boolean> {
     if (typeof v === "boolean") return v;
     if (typeof v === "string") return v !== "false";
   }
+  const cached = await loadSettingsCache();
+  if (cached) return cached.offlineModeEnabled;
   return true; // safe default: offline always works unless server explicitly says off
 }
 
@@ -257,7 +266,7 @@ export async function updateOfflineModeEnabled(
 
   if (error) {
     console.error("Error updating offline_mode_enabled:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
   return { success: true, message: "Offline mode setting updated" };
 }

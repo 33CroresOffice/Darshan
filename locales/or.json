@@ -178,6 +178,7 @@
       "todayQuota": "ଆଜିର ଦର୍ଶନ କୋଟା",
       "devoteesToday": "ଆଜି ଭକ୍ତ ନେଇଛନ୍ତି",
       "slotsRemaining": "{{count}} ସ୍ଲଟ ଅବଶିଷ୍ଟ",
+      "lastSynced": "{{time}} ରେ ସିଙ୍କ",
       "createTicket": "ଦର୍ଶନ ଟିକଟ ତିଆରି",
       "slotAvailability": "ସ୍ଲଟ ଉପଲବ୍ଧତା",
       "todaySlots": "ଆଜିର ସ୍ଲଟ",

@@ -27,34 +27,42 @@ import { getTicketValidityMinutes, getOfflineModeEnabled } from "./settingsServi
 import type { GateEntry, EntryMode, SebayatQuota } from "@/types/database";
 import type { CreateEntryResult } from "@/types";
 
-// Compute effective remaining offline by subtracting any local-only tickets
-// (those still in the outbox / cache that haven't synced) from the server's
-// last-known used count.
+// Compute effective remaining, merging server state with any unsynced local tickets.
+// Always attempts a live server fetch regardless of connectivity flag (the flag can
+// lag reality). On success the ledger is saved for future offline use.
 export async function getEffectiveQuota(sebayatId: string): Promise<SebayatQuota> {
   const date = todayString();
 
-  if (connectivity.isOnline()) {
-    try {
-      const q = await getSebayatDailyQuota(sebayatId, date);
-      await saveServerQuota(sebayatId, date, q);
-      // Merge with any not-yet-synced local tickets
-      const local = await getCachedTickets(sebayatId, date);
-      const localPending = local
-        .filter((t) => t.status === "pending" && t.id === t.entry_code) // synthetic local id
-        .reduce((sum, t) => sum + t.declared_devotee_count, 0);
-      const used = q.usedCount;
-      const remaining = Math.max(0, q.maxLimit - used - localPending);
-      return { maxLimit: q.maxLimit, usedCount: used + localPending, remainingCount: remaining };
-    } catch {
-      // fall through to offline path
-    }
+  // Always try the network — don't trust connectivity flag alone since it can
+  // be stale (e.g. the offline event fires after this call already started).
+  try {
+    const q = await getSebayatDailyQuota(sebayatId, date);
+    // Persist immediately so the offline ledger is always fresh
+    await saveServerQuota(sebayatId, date, q);
+    // Add any local-only tickets not yet acknowledged by the server
+    const local = await getCachedTickets(sebayatId, date);
+    const localPending = local
+      .filter((t) => t.status !== "cancelled" && t.id.startsWith("local_"))
+      .reduce((sum, t) => sum + t.declared_devotee_count, 0);
+    const used = q.usedCount + localPending;
+    const remaining = Math.max(0, q.maxLimit - used);
+    connectivity.setOnline(true);
+    return { maxLimit: q.maxLimit, usedCount: used, remainingCount: remaining };
+  } catch {
+    // Network unavailable — fall back to last-saved ledger
+    connectivity.setOnline(false);
   }
 
+  // Offline path: derive quota from the persisted ledger + local tickets.
   const ledger = await loadServerQuota(sebayatId, date);
   const local = await getCachedTickets(sebayatId, date);
+
   const localPending = local
     .filter((t) => t.status !== "cancelled" && t.id.startsWith("local_"))
     .reduce((sum, t) => sum + t.declared_devotee_count, 0);
+
+  // Use the real limit from the ledger. Falls back to 20 (system default)
+  // only if no ledger has ever been saved (true first-ever offline session).
   const maxLimit = ledger?.maxLimit ?? 20;
   const serverUsed = ledger?.serverUsed ?? 0;
   const remaining = Math.max(0, maxLimit - serverUsed - localPending);

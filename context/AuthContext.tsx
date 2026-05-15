@@ -6,15 +6,19 @@ import {
   ReactNode,
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import type { Profile, SebayatRegistration } from "@/types";
+
+const CACHE_PROFILE_KEY = "@auth:profile";
+const CACHE_REGISTRATION_KEY = "@auth:registration";
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
   registration: SebayatRegistration | null;
-  // true once we've attempted (and succeeded or confirmed-absent) at least one fetch
+  // true once we have confirmed data from the server (or confirmed no row exists)
   registrationLoaded: boolean;
   loading: boolean;
   hasApprovedRegistration: boolean;
@@ -25,67 +29,148 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// ---------- cache helpers ----------
+
+async function readCachedProfile(): Promise<Profile | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_PROFILE_KEY);
+    return raw ? (JSON.parse(raw) as Profile) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedProfile(p: Profile | null) {
+  try {
+    if (p) await AsyncStorage.setItem(CACHE_PROFILE_KEY, JSON.stringify(p));
+    else await AsyncStorage.removeItem(CACHE_PROFILE_KEY);
+  } catch {}
+}
+
+async function readCachedRegistration(): Promise<SebayatRegistration | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_REGISTRATION_KEY);
+    return raw ? (JSON.parse(raw) as SebayatRegistration) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedRegistration(r: SebayatRegistration | null) {
+  try {
+    if (r) await AsyncStorage.setItem(CACHE_REGISTRATION_KEY, JSON.stringify(r));
+    else await AsyncStorage.removeItem(CACHE_REGISTRATION_KEY);
+  } catch {}
+}
+
+// ---------- provider ----------
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [registration, setRegistration] = useState<SebayatRegistration | null>(
-    null
-  );
+  const [registration, setRegistration] = useState<SebayatRegistration | null>(null);
+  // true once we have a confirmed server response (or confirmed no row exists)
   const [registrationLoaded, setRegistrationLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
-    // Only update state on success so an offline failure doesn't wipe the profile
-    if (!error) {
-      setProfile(data as Profile | null);
-    }
-    return error ? null : (data as Profile | null);
+  // Fetch profile from server; on success update state + cache.
+  // On network failure keep whatever is already in state (caller pre-loaded cache).
+  const fetchProfile = async (userId: string): Promise<Profile | null> => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!error) {
+        const p = data as Profile | null;
+        setProfile(p);
+        await writeCachedProfile(p);
+        return p;
+      }
+    } catch {}
+    return null;
   };
 
-  const fetchRegistration = async (userId: string) => {
-    const { data, error } = await supabase
-      .from("sebayat_registrations")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-    // Only update state on success so an offline failure doesn't wipe the
-    // previously-loaded registration and trigger a redirect to onboarding.
-    if (!error) {
-      setRegistration(data as SebayatRegistration | null);
-      setRegistrationLoaded(true);
-    }
+  // Fetch registration from server; on success update state + cache + mark loaded.
+  // On network failure keep whatever is already in state.
+  const fetchRegistration = async (userId: string): Promise<void> => {
+    try {
+      const { data, error } = await supabase
+        .from("sebayat_registrations")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!error) {
+        const r = data as SebayatRegistration | null;
+        setRegistration(r);
+        await writeCachedRegistration(r);
+        setRegistrationLoaded(true);
+      }
+    } catch {}
   };
 
   const refreshProfile = async () => {
-    if (session?.user?.id) {
-      await fetchProfile(session.user.id);
-    }
+    if (session?.user?.id) await fetchProfile(session.user.id);
   };
 
   const refreshRegistration = async () => {
-    if (session?.user?.id) {
-      await fetchRegistration(session.user.id);
-    }
+    if (session?.user?.id) await fetchRegistration(session.user.id);
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.id) {
-        setSession(session);
-        Promise.all([
-          fetchProfile(session.user.id),
-          fetchRegistration(session.user.id),
-        ]).finally(() => setLoading(false));
-      } else {
-        setSession(session);
-        setLoading(false);
+    // Bootstrap: load cached profile/registration immediately so the UI is
+    // never blank on first render, even offline. Then try to get a fresh
+    // session and fetch live data.
+    const bootstrap = async () => {
+      // 1. Paint from cache right away
+      const [cachedProfile, cachedRegistration] = await Promise.all([
+        readCachedProfile(),
+        readCachedRegistration(),
+      ]);
+      if (cachedProfile) setProfile(cachedProfile);
+      if (cachedRegistration) {
+        setRegistration(cachedRegistration);
+        // Cache means we previously confirmed a row exists; treat as loaded
+        // so the routing guard can act on it without waiting for the server.
+        setRegistrationLoaded(true);
       }
-    });
+
+      // 2. Try to get the live session — this may fail if offline
+      let liveSession: Session | null = null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        liveSession = data.session;
+      } catch {
+        // Offline on cold start: if we already painted cached data above the
+        // user can continue; if no cache we just show the auth screen.
+      }
+
+      setSession(liveSession);
+
+      if (liveSession?.user?.id) {
+        // Fire live fetches; they update state only on success so an offline
+        // failure leaves the cached values untouched.
+        await Promise.allSettled([
+          fetchProfile(liveSession.user.id),
+          fetchRegistration(liveSession.user.id),
+        ]);
+      } else if (!liveSession) {
+        // No session at all — clear any stale cache
+        if (!cachedProfile && !cachedRegistration) {
+          // nothing to clear
+        } else {
+          setProfile(null);
+          setRegistration(null);
+          setRegistrationLoaded(false);
+          await Promise.all([writeCachedProfile(null), writeCachedRegistration(null)]);
+        }
+      }
+
+      setLoading(false);
+    };
+
+    bootstrap();
 
     const {
       data: { subscription },
@@ -96,6 +181,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRegistration(null);
         setRegistrationLoaded(false);
         setLoading(false);
+        // Clear caches on sign-out
+        (async () => {
+          await Promise.all([writeCachedProfile(null), writeCachedRegistration(null)]);
+        })();
         return;
       }
 
@@ -103,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.user?.id) {
         setLoading(true);
         (async () => {
-          await Promise.all([
+          await Promise.allSettled([
             fetchProfile(session.user.id),
             fetchRegistration(session.user.id),
           ]);
@@ -120,6 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Real-time profile updates via Supabase channel
   useEffect(() => {
     if (!session?.user?.id) return;
 
@@ -138,6 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (payload) => {
           const updatedProfile = payload.new as Profile;
           setProfile(updatedProfile);
+          writeCachedProfile(updatedProfile);
 
           if (updatedProfile.is_active === false) {
             (async () => {

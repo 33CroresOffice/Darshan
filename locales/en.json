@@ -178,6 +178,7 @@
       "todayQuota": "Today's Darshan Quota",
       "devoteesToday": "devotees taken today",
       "slotsRemaining": "{{count}} slots remaining",
+      "lastSynced": "Synced at {{time}}",
       "createTicket": "Create Darshan Ticket",
       "slotAvailability": "Slot Availability",
       "todaySlots": "Today's Slots",

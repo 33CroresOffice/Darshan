@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useState } from "react";
 import { FeedbackModal } from "@/components/feedback/FeedbackModal";
 import { useTranslation } from "react-i18next";
+import { OfflineBanner } from "@/components/layout/OfflineBanner";
 
 function GlobalHeader() {
   const router = useRouter();
@@ -195,6 +196,7 @@ export default function SupervisorLayout() {
   return (
     <View style={styles.container}>
       <GlobalHeader />
+      <OfflineBanner />
       <SupervisorTabs />
     </View>
   );

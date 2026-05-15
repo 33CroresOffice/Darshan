@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { normaliseError } from "@/lib/offline";
 import type { Category } from "@/types";
 
 export async function getCategories(): Promise<Category[]> {
@@ -71,7 +72,7 @@ export async function createCategory(name: string): Promise<CreateCategoryResult
     .single();
 
   if (error) {
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: "Category created successfully", category: data };
@@ -121,7 +122,7 @@ export async function updateCategory(
     .single();
 
   if (error) {
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   return { success: true, message: "Category updated successfully", category: data };

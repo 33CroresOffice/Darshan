@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { normaliseError } from "@/lib/offline";
 import type { SlotSession, SlotSessionLog } from "@/types/database";
 
 export async function getActiveSession(): Promise<SlotSession | null> {
@@ -85,7 +86,7 @@ export async function startSlotSession(
         message: "A slot is already active for today. Please end it first.",
       };
     }
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   await supabase.from("slot_session_logs").insert({
@@ -136,7 +137,7 @@ export async function endSlotSession(
 
   if (error) {
     console.error("Error ending slot session:", error);
-    return { success: false, message: error.message };
+    return { success: false, message: normaliseError(error) };
   }
 
   const slotName = (session.slot as any)?.name || "Unknown";
