@@ -9,6 +9,7 @@ import {
   Image,
   Platform,
   Modal,
+  Pressable,
   RefreshControl,
   KeyboardAvoidingView,
 } from "react-native";
@@ -52,7 +53,7 @@ import {
   searchSebayatResilient,
   getEffectiveQuota,
 } from "@/services/offlineEntryService";
-import { connectivity, cacheGateEntries, loadCachedGateEntries, loadSebayatListCache } from "@/lib/offline";
+import { connectivity, cacheGateEntries, loadCachedGateEntries, loadSebayatListCache, markIdempotencyKeyScanned, isIdempotencyKeyScanned, getScannedRecord, type ScannedRecord } from "@/lib/offline";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { GumastaInfoCard } from "@/components/tickets/GumastaInfoCard";
 import { getGumastaById } from "@/services/gumastaService";
@@ -88,7 +89,7 @@ export default function InnerGateScreen() {
   const [pendingList, setPendingList] = useState<GateEntry[]>([]);
   const [maxVerifiedCount, setMaxVerifiedCount] = useState<number>(999);
   const [offlineMode, setOfflineMode] = useState(false);
-  const [offlineEntry, setOfflineEntry] = useState<{ idempotencyKey: string; entryCode: string; declaredCount: number; sebayatId: string } | null>(null);
+  const [offlineEntry, setOfflineEntry] = useState<{ idempotencyKey: string; entryCode: string; declaredCount: number; sebayatId: string; qrPayload: Record<string, unknown> } | null>(null);
   const [printTokenEnabled, setPrintTokenEnabled] = useState(false);
   const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -98,6 +99,7 @@ export default function InnerGateScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [phoneValue, setPhoneValue] = useState("");
   const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
+  const [alreadyScannedRecord, setAlreadyScannedRecord] = useState<ScannedRecord | null>(null);
 
   useEffect(() => {
     const unsub = connectivity.subscribe(() => {
@@ -264,6 +266,14 @@ export default function InnerGateScreen() {
           loadEntryQuota(found);
         }
       } else if (resolved.source === "offline_payload" && resolved.idempotencyKey && resolved.declaredCount !== null && resolved.sebayatId) {
+        // Duplicate-scan guard: prevent the same offline ticket from being
+        // accepted twice on this supervisor device in the same day.
+        const scannedRecord = await getScannedRecord(resolved.idempotencyKey);
+        if (scannedRecord) {
+          setAlreadyScannedRecord(scannedRecord);
+          return;
+        }
+
         // Resolve sebayat identity from local cache for display
         const cachedList = await loadSebayatListCache();
         const cachedSebayat = cachedList.find((s) => s.id === resolved.sebayatId);
@@ -271,12 +281,16 @@ export default function InnerGateScreen() {
           ? { full_name: cachedSebayat.full_name, phone_number: cachedSebayat.phone_number, photo_url: cachedSebayat.photo_url, category: cachedSebayat.category_name ? { name: cachedSebayat.category_name } : null }
           : null;
 
+        let parsedQr: Record<string, unknown> = {};
+        try { parsedQr = JSON.parse(data); } catch {}
+
         setOfflineMode(true);
         setOfflineEntry({
           idempotencyKey: resolved.idempotencyKey,
           entryCode: resolved.entryCode,
           declaredCount: resolved.declaredCount,
           sebayatId: resolved.sebayatId,
+          qrPayload: parsedQr,
         });
         const synthesized: GateEntry = {
           id: resolved.idempotencyKey,
@@ -365,7 +379,18 @@ export default function InnerGateScreen() {
           reason: needsReason ? adjustReason.trim() : undefined,
           sebayatId: offlineEntry.sebayatId,
           entryCode: offlineEntry.entryCode,
+          offlineOrigin: true,
+          offlineQrPayload: offlineEntry.qrPayload,
         });
+        if (r.success) {
+          await markIdempotencyKeyScanned({
+            idempotencyKey: offlineEntry.idempotencyKey,
+            gate: "inner",
+            count: verifiedCount,
+            entryCode: offlineEntry.entryCode,
+            scannedAt: new Date().toISOString(),
+          });
+        }
         const fakeEntry: GateEntry = {
           id: offlineEntry.idempotencyKey,
           entry_code: offlineEntry.entryCode,
@@ -1073,6 +1098,48 @@ export default function InnerGateScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Already-Scanned Alert Modal */}
+      <Modal
+        visible={!!alreadyScannedRecord}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAlreadyScannedRecord(null)}
+      >
+        <Pressable style={styles.alreadyScannedBackdrop} onPress={() => setAlreadyScannedRecord(null)}>
+          <Pressable style={styles.alreadyScannedCard} onPress={() => {}}>
+            <View style={styles.alreadyScannedIconRow}>
+              <View style={styles.alreadyScannedIconBg}>
+                <AlertCircle size={28} color={COLORS.warning} />
+              </View>
+            </View>
+            <Text style={styles.alreadyScannedTitle}>
+              {t('supervisor.innerGate.alreadyScannedTitle')}
+            </Text>
+            <Text style={styles.alreadyScannedBody}>
+              {t('supervisor.innerGate.alreadyScannedBody')}
+            </Text>
+            {alreadyScannedRecord && (
+              <View style={styles.alreadyScannedDetails}>
+                <Text style={styles.alreadyScannedDetailText}>
+                  {t('supervisor.innerGate.alreadyScannedDetails', {
+                    code: alreadyScannedRecord.entryCode,
+                    count: alreadyScannedRecord.count,
+                    time: new Date(alreadyScannedRecord.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  })}
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.alreadyScannedCloseBtn}
+              onPress={() => setAlreadyScannedRecord(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.alreadyScannedCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -1822,5 +1889,72 @@ const styles = StyleSheet.create({
     color: "#0891b2",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  alreadyScannedBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  alreadyScannedCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    marginHorizontal: SPACING.xl,
+    alignItems: "center",
+    ...SHADOWS.lg,
+  },
+  alreadyScannedIconRow: {
+    marginBottom: SPACING.md,
+  },
+  alreadyScannedIconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.warning + "18",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  alreadyScannedTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    textAlign: "center",
+    marginBottom: SPACING.sm,
+  },
+  alreadyScannedBody: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: SPACING.md,
+  },
+  alreadyScannedDetails: {
+    backgroundColor: COLORS.warning + "12",
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.lg,
+    width: "100%",
+    alignItems: "center",
+  },
+  alreadyScannedDetailText: {
+    fontSize: 13,
+    color: COLORS.warning,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  alreadyScannedCloseBtn: {
+    backgroundColor: COLORS.warning,
+    borderRadius: RADIUS.md,
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.xl,
+    minWidth: 120,
+    alignItems: "center",
+  },
+  alreadyScannedCloseBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
   },
 });

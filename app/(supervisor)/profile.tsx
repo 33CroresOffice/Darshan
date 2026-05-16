@@ -43,13 +43,18 @@ export default function SupervisorProfileScreen() {
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ uri: string; title: string } | null>(null);
 
+  const getAddress = () => registration?.permanent_address || registration?.address || "";
+  const getCity = () => registration?.permanent_city || registration?.city || "";
+  const getState = () => registration?.permanent_state || registration?.state || "";
+  const getPincode = () => registration?.permanent_pincode || registration?.pincode || "";
+
   useEffect(() => {
     if (registration) {
       setAddressForm({
-        address: registration.address || "",
-        city: registration.city || "",
-        state: registration.state || "",
-        pincode: registration.pincode || "",
+        address: getAddress(),
+        city: getCity(),
+        state: getState(),
+        pincode: getPincode(),
       });
       setDobForm(registration.date_of_birth ? new Date(registration.date_of_birth) : null);
     }
@@ -63,15 +68,12 @@ export default function SupervisorProfileScreen() {
 
   const isProfileIncomplete =
     !registration?.date_of_birth ||
-    !registration?.address ||
-    !registration?.city ||
-    !registration?.state ||
-    !registration?.pincode;
+    (!getAddress() || !getCity() || !getState() || !getPincode());
 
   const getMissingFields = () => {
     const missing: string[] = [];
     if (!registration?.date_of_birth) missing.push(t('supervisor.profile.dateOfBirth'));
-    if (!registration?.address || !registration?.city || !registration?.state || !registration?.pincode) {
+    if (!getAddress() || !getCity() || !getState() || !getPincode()) {
       missing.push(t('supervisor.profile.address'));
     }
     return missing;
@@ -118,10 +120,10 @@ export default function SupervisorProfileScreen() {
 
   const handleCancelAddressEdit = () => {
     setAddressForm({
-      address: registration?.address || "",
-      city: registration?.city || "",
-      state: registration?.state || "",
-      pincode: registration?.pincode || "",
+      address: getAddress(),
+      city: getCity(),
+      state: getState(),
+      pincode: getPincode(),
     });
     setErrors({});
     setError("");
@@ -134,8 +136,7 @@ export default function SupervisorProfileScreen() {
     setIsEditingDob(false);
   };
 
-  const hasAddress =
-    registration?.address || registration?.city || registration?.state || registration?.pincode;
+  const hasAddress = getAddress() || getCity() || getState() || getPincode();
 
   const handlePickPhoto = async () => {
     const { status } = await ExpoImagePicker.requestMediaLibraryPermissionsAsync();
@@ -385,22 +386,22 @@ export default function SupervisorProfileScreen() {
                     <>
                       <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>{t('supervisor.profile.address')}</Text>
-                        <Text style={styles.infoValue}>{registration?.address || "-"}</Text>
+                        <Text style={styles.infoValue}>{getAddress() || "-"}</Text>
                       </View>
                       <View style={styles.divider} />
                       <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>{t('supervisor.profile.city')}</Text>
-                        <Text style={styles.infoValue}>{registration?.city || "-"}</Text>
+                        <Text style={styles.infoValue}>{getCity() || "-"}</Text>
                       </View>
                       <View style={styles.divider} />
                       <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>{t('supervisor.profile.state')}</Text>
-                        <Text style={styles.infoValue}>{registration?.state || "-"}</Text>
+                        <Text style={styles.infoValue}>{getState() || "-"}</Text>
                       </View>
                       <View style={styles.divider} />
                       <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>{t('supervisor.profile.pincode')}</Text>
-                        <Text style={styles.infoValue}>{registration?.pincode || "-"}</Text>
+                        <Text style={styles.infoValue}>{getPincode() || "-"}</Text>
                       </View>
                     </>
                   ) : (

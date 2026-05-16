@@ -81,7 +81,17 @@ export default function RegistrationScreen() {
       if (!raw) return;
       try {
         const draft = JSON.parse(raw) as { step: number; form: RegistrationFormData };
-        if (draft.form) setFormData(draft.form);
+        if (draft.form) {
+          // File URIs are ephemeral on mobile — clear them on restore so the
+          // user always picks fresh files rather than referencing stale paths.
+          setFormData({
+            ...draft.form,
+            aadharCardUri: null,
+            templeHealthCardUri: null,
+            templeIdCardUri: null,
+            photoUri: null,
+          });
+        }
         if (typeof draft.step === "number") setCurrentStep(draft.step);
       } catch {
         // ignore corrupt draft

@@ -342,10 +342,14 @@ export async function resolveScannedTicket(qrData: string): Promise<ResolvedQrTi
           ticket: data as GateEntry,
         };
       }
+      // Server is reachable but ticket not found yet — it may still be in the
+      // user's outbox (created offline, not yet synced). Fall through to the
+      // embedded-payload path so the supervisor can still process it.
     } catch {}
   }
 
-  // Offline: trust the embedded payload
+  // Offline OR online-but-not-yet-synced: trust the embedded payload.
+  // The QR payload is the authoritative source of truth for offline tickets.
   const idempotencyKey = (parsed?.idempotencyKey as string) ?? null;
   if (idempotencyKey) {
     return {
@@ -365,11 +369,38 @@ export async function recordWestGateEventResilient(args: {
   actualCount: number;
   sebayatId?: string;
   entryCode?: string;
+  // Provided when the ticket was created offline and may not be on the server yet
+  offlineOrigin?: boolean;
+  offlineQrPayload?: Record<string, unknown>;
 }): Promise<{ success: boolean; message: string; offline: boolean }> {
   const deviceId = await getDeviceId();
   const capturedAt = new Date().toISOString();
 
   if (connectivity.isOnline()) {
+    // If ticket was created offline and hasn't synced yet, reconcile it first
+    // so apply_west_gate_event can find it by idempotency key.
+    if (args.offlineOrigin && args.offlineQrPayload) {
+      const qr = args.offlineQrPayload;
+      await supabase.rpc("reconcile_offline_ticket", {
+        p_idempotency_key: args.idempotencyKey,
+        p_entry_code: qr.entryCode as string,
+        p_qr_code_data: qr,
+        p_sebayat_id: qr.sebayatId as string,
+        p_slot_id: (qr.slotId as string) ?? null,
+        p_declared_count: qr.count as number,
+        p_entry_date: qr.date as string,
+        p_entry_mode: (qr.entryMode as string) ?? "west_gate",
+        p_expires_at: null,
+        p_client_created_at: qr.timestamp as string,
+        p_device_id: (qr.deviceId as string) ?? deviceId,
+      });
+      // Remove the pending ticket.create from the outbox to avoid a duplicate
+      // reconcile when the outbox flushes later (the RPC is idempotent anyway,
+      // but this keeps the outbox clean).
+      const { removeOutboxByIdempotencyKey } = await import("@/lib/offline");
+      await removeOutboxByIdempotencyKey(args.idempotencyKey);
+    }
+
     const { error } = await supabase.rpc("apply_west_gate_event", {
       p_idempotency_key: args.idempotencyKey,
       p_supervisor_id: args.supervisorId,
@@ -398,6 +429,9 @@ export async function recordWestGateEventResilient(args: {
     actualCount: args.actualCount,
     capturedAt,
     deviceId,
+    // Store QR payload so the sync runner can buffer-create the ticket on the
+    // server if it hasn't been reconciled yet when this op is flushed.
+    offlineQrPayload: args.offlineQrPayload ?? null,
   });
 
   if (args.sebayatId) {
@@ -420,11 +454,34 @@ export async function recordInnerGateEventResilient(args: {
   reason?: string;
   sebayatId?: string;
   entryCode?: string;
+  // Provided when the ticket was created offline and may not be on the server yet
+  offlineOrigin?: boolean;
+  offlineQrPayload?: Record<string, unknown>;
 }): Promise<{ success: boolean; message: string; offline: boolean }> {
   const deviceId = await getDeviceId();
   const capturedAt = new Date().toISOString();
 
   if (connectivity.isOnline()) {
+    // If ticket was created offline and hasn't synced yet, reconcile it first.
+    if (args.offlineOrigin && args.offlineQrPayload) {
+      const qr = args.offlineQrPayload;
+      await supabase.rpc("reconcile_offline_ticket", {
+        p_idempotency_key: args.idempotencyKey,
+        p_entry_code: qr.entryCode as string,
+        p_qr_code_data: qr,
+        p_sebayat_id: qr.sebayatId as string,
+        p_slot_id: (qr.slotId as string) ?? null,
+        p_declared_count: qr.count as number,
+        p_entry_date: qr.date as string,
+        p_entry_mode: (qr.entryMode as string) ?? "marjana_mandap",
+        p_expires_at: null,
+        p_client_created_at: qr.timestamp as string,
+        p_device_id: (qr.deviceId as string) ?? deviceId,
+      });
+      const { removeOutboxByIdempotencyKey } = await import("@/lib/offline");
+      await removeOutboxByIdempotencyKey(args.idempotencyKey);
+    }
+
     const { error } = await supabase.rpc("apply_inner_gate_event", {
       p_idempotency_key: args.idempotencyKey,
       p_supervisor_id: args.supervisorId,
@@ -455,6 +512,7 @@ export async function recordInnerGateEventResilient(args: {
     reason: args.reason,
     capturedAt,
     deviceId,
+    offlineQrPayload: args.offlineQrPayload ?? null,
   });
 
   if (args.sebayatId) {

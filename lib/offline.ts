@@ -427,6 +427,20 @@ async function removeFromOutbox(id: string) {
   await setOutbox(items);
 }
 
+// Remove all ticket.create / ticket.staff_create ops for a given idempotency key.
+// Called when the supervisor's gate event flow reconciles the ticket online
+// directly, so we don't reconcile it again when the outbox flushes.
+export async function removeOutboxByIdempotencyKey(idempotencyKey: string): Promise<void> {
+  const items = (await getOutbox()).filter(
+    (o) =>
+      !(
+        (o.op === "ticket.create" || o.op === "ticket.staff_create") &&
+        o.payload.idempotencyKey === idempotencyKey
+      )
+  );
+  await setOutbox(items);
+}
+
 async function bumpAttempt(id: string, error: string) {
   const items = await getOutbox();
   const idx = items.findIndex((o) => o.id === id);
@@ -528,12 +542,24 @@ async function runTicketEditCount(p: Record<string, unknown>) {
 }
 
 async function runWestVerify(p: Record<string, unknown>) {
+  const qr = p.offlineQrPayload as Record<string, unknown> | null | undefined;
   const { error } = await supabase.rpc("apply_west_gate_event", {
     p_idempotency_key: p.idempotencyKey,
     p_supervisor_id: p.supervisorId,
     p_actual_count: p.actualCount,
     p_captured_at: p.capturedAt,
     p_device_id: p.deviceId,
+    // Buffered-creation params — passed through so the RPC can mint the row
+    // if the ticket.create op hasn't been processed yet.
+    p_entry_code: (qr?.entryCode as string) ?? null,
+    p_qr_code_data: qr ?? null,
+    p_sebayat_id: (qr?.sebayatId as string) ?? null,
+    p_slot_id: (qr?.slotId as string) ?? null,
+    p_declared_count: (qr?.count as number) ?? null,
+    p_entry_date: (qr?.date as string) ?? null,
+    p_entry_mode: (qr?.entryMode as string) ?? null,
+    p_expires_at: null,
+    p_client_created_at: (qr?.timestamp as string) ?? null,
   });
   if (error) throw new Error(error.message);
 }
@@ -559,6 +585,7 @@ async function runWestRegister(p: Record<string, unknown>) {
 }
 
 async function runInnerVerify(p: Record<string, unknown>) {
+  const qr = p.offlineQrPayload as Record<string, unknown> | null | undefined;
   const { error } = await supabase.rpc("apply_inner_gate_event", {
     p_idempotency_key: p.idempotencyKey,
     p_supervisor_id: p.supervisorId,
@@ -566,6 +593,16 @@ async function runInnerVerify(p: Record<string, unknown>) {
     p_captured_at: p.capturedAt,
     p_device_id: p.deviceId,
     p_reason: p.reason ?? null,
+    // Buffered-creation params
+    p_entry_code: (qr?.entryCode as string) ?? null,
+    p_qr_code_data: qr ?? null,
+    p_sebayat_id: (qr?.sebayatId as string) ?? null,
+    p_slot_id: (qr?.slotId as string) ?? null,
+    p_declared_count: (qr?.count as number) ?? null,
+    p_entry_date: (qr?.date as string) ?? null,
+    p_entry_mode: (qr?.entryMode as string) ?? null,
+    p_expires_at: null,
+    p_client_created_at: (qr?.timestamp as string) ?? null,
   });
   if (error) throw new Error(error.message);
 }
@@ -603,6 +640,48 @@ async function runFlagDiscrepancy(p: Record<string, unknown>) {
     })
     .eq("id", p.entryId as string);
   if (error) throw new Error(error.message);
+}
+
+// ---------- Duplicate-scan guard ----------
+// Tracks idempotency keys that have already been processed by this supervisor
+// device today, preventing the same offline QR from being accepted twice.
+
+const SCANNED_KEYS_PREFIX = "@offline:supervisor:scanned_keys:";
+
+export interface ScannedRecord {
+  idempotencyKey: string;
+  gate: "west" | "inner";
+  count: number;
+  entryCode: string;
+  scannedAt: string;
+}
+
+function scannedKeysKey(date: string) {
+  return `${SCANNED_KEYS_PREFIX}${date}`;
+}
+
+export async function markIdempotencyKeyScanned(record: ScannedRecord): Promise<void> {
+  const date = todayString();
+  const key = scannedKeysKey(date);
+  const raw = await AsyncStorage.getItem(key);
+  const map: Record<string, ScannedRecord> = raw ? JSON.parse(raw) : {};
+  if (!map[record.idempotencyKey]) {
+    map[record.idempotencyKey] = record;
+    await AsyncStorage.setItem(key, JSON.stringify(map));
+  }
+}
+
+export async function getScannedRecord(idempotencyKey: string): Promise<ScannedRecord | null> {
+  const date = todayString();
+  const key = scannedKeysKey(date);
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return null;
+  const map: Record<string, ScannedRecord> = JSON.parse(raw);
+  return map[idempotencyKey] ?? null;
+}
+
+export async function isIdempotencyKeyScanned(idempotencyKey: string): Promise<boolean> {
+  return (await getScannedRecord(idempotencyKey)) !== null;
 }
 
 // ---------- Network error normaliser ----------

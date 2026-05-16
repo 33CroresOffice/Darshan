@@ -58,7 +58,7 @@ import {
   registerWestGateEntryResilient,
   getGateLog,
 } from "@/services/offlineEntryService";
-import { loadSebayatListCache, type GateLogEntry } from "@/lib/offline";
+import { loadSebayatListCache, type GateLogEntry, markIdempotencyKeyScanned, isIdempotencyKeyScanned, getScannedRecord, type ScannedRecord } from "@/lib/offline";
 import {
   getPrintTokenEnabled,
   getPrintTokenIncludePhoto,
@@ -89,6 +89,8 @@ export default function WestGateScreen() {
   const [loadingPending, setLoadingPending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<GateEntry | null>(null);
+  const [selectedEntryQrPayload, setSelectedEntryQrPayload] = useState<Record<string, unknown> | null>(null);
+  const [alreadyScannedRecord, setAlreadyScannedRecord] = useState<ScannedRecord | null>(null);
   const [selectedGumasta, setSelectedGumasta] = useState<Gumasta | null>(null);
   const [sebayat, setSebayat] = useState<SebayatRegistration | null>(null);
   const [quota, setQuota] = useState<SebayatQuota | null>(null);
@@ -266,12 +268,24 @@ export default function WestGateScreen() {
       }
 
       if (resolved && resolved.source === "offline_payload" && resolved.idempotencyKey && resolved.declaredCount !== null && resolved.sebayatId) {
+        // Duplicate-scan guard: prevent the same offline ticket from being
+        // accepted twice on this supervisor device in the same day.
+        const scannedRecord = await getScannedRecord(resolved.idempotencyKey);
+        if (scannedRecord) {
+          setAlreadyScannedRecord(scannedRecord);
+          setShowScanner(false);
+          return;
+        }
+
         // Resolve sebayat identity from local cache for display
         const cachedList = await loadSebayatListCache();
         const cachedSebayat = cachedList.find((s) => s.id === resolved.sebayatId);
         const sebayatJoin = cachedSebayat
           ? { full_name: cachedSebayat.full_name, phone_number: cachedSebayat.phone_number, photo_url: cachedSebayat.photo_url, category: cachedSebayat.category_name ? { name: cachedSebayat.category_name } : null }
           : null;
+
+        let parsedQr: Record<string, unknown> = {};
+        try { parsedQr = JSON.parse(data); } catch {}
 
         const synthesized: GateEntry = {
           id: resolved.idempotencyKey,
@@ -298,6 +312,7 @@ export default function WestGateScreen() {
           updated_at: new Date().toISOString(),
         };
         setSelectedEntry(synthesized);
+        setSelectedEntryQrPayload(parsedQr);
         setShowAcknowledgeModal(true);
         setShowScanner(false);
         return;
@@ -355,8 +370,19 @@ export default function WestGateScreen() {
           actualCount: entry.declared_devotee_count,
           sebayatId: entry.sebayat_id,
           entryCode: entry.entry_code,
+          offlineOrigin: !!entry.offline_origin,
+          offlineQrPayload: entry.offline_origin ? (selectedEntryQrPayload ?? undefined) : undefined,
         });
         if (r.success) {
+          if (entry.idempotency_key) {
+            await markIdempotencyKeyScanned({
+              idempotencyKey: entry.idempotency_key,
+              gate: "west",
+              count: entry.declared_devotee_count,
+              entryCode: entry.entry_code,
+              scannedAt: new Date().toISOString(),
+            });
+          }
           const synthEntry: GateEntry = {
             ...entry,
             status: "registered",
@@ -1404,6 +1430,48 @@ export default function WestGateScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Already-Scanned Alert Modal */}
+      <Modal
+        visible={!!alreadyScannedRecord}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAlreadyScannedRecord(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setAlreadyScannedRecord(null)}>
+          <Pressable style={styles.alreadyScannedCard} onPress={() => {}}>
+            <View style={styles.alreadyScannedIconRow}>
+              <View style={styles.alreadyScannedIconBg}>
+                <AlertCircle size={28} color={COLORS.warning} />
+              </View>
+            </View>
+            <Text style={styles.alreadyScannedTitle}>
+              {t('supervisor.westGate.alreadyScannedTitle')}
+            </Text>
+            <Text style={styles.alreadyScannedBody}>
+              {t('supervisor.westGate.alreadyScannedBody')}
+            </Text>
+            {alreadyScannedRecord && (
+              <View style={styles.alreadyScannedDetails}>
+                <Text style={styles.alreadyScannedDetailText}>
+                  {t('supervisor.westGate.alreadyScannedDetails', {
+                    code: alreadyScannedRecord.entryCode,
+                    count: alreadyScannedRecord.count,
+                    time: new Date(alreadyScannedRecord.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  })}
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.alreadyScannedCloseBtn}
+              onPress={() => setAlreadyScannedRecord(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.alreadyScannedCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2414,5 +2482,66 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: "#BAE6FD",
+  },
+  alreadyScannedCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    marginHorizontal: SPACING.xl,
+    alignItems: "center",
+    ...SHADOWS.lg,
+  },
+  alreadyScannedIconRow: {
+    marginBottom: SPACING.md,
+  },
+  alreadyScannedIconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.warning + "18",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  alreadyScannedTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    textAlign: "center",
+    marginBottom: SPACING.sm,
+  },
+  alreadyScannedBody: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: SPACING.md,
+  },
+  alreadyScannedDetails: {
+    backgroundColor: COLORS.warning + "12",
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.lg,
+    width: "100%",
+    alignItems: "center",
+  },
+  alreadyScannedDetailText: {
+    fontSize: 13,
+    color: COLORS.warning,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  alreadyScannedCloseBtn: {
+    backgroundColor: COLORS.warning,
+    borderRadius: RADIUS.md,
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.xl,
+    minWidth: 120,
+    alignItems: "center",
+  },
+  alreadyScannedCloseBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
   },
 });
