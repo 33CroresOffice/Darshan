@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,8 +11,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { Search, Phone, IdCard, ChevronRight } from "lucide-react-native";
-import { searchSebayatByPhone, searchSebayatByTempleId } from "@/services/entryService";
+import { Search, Phone, IdCard, ChevronRight, WifiOff } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
+import { searchSebayatResilient } from "@/services/offlineEntryService";
+import { connectivity, loadSebayatListCache } from "@/lib/offline";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { SebayatRegistration } from "@/types/database";
 
@@ -23,12 +25,21 @@ interface SebayatSearchPanelProps {
 }
 
 export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
+  const { t } = useTranslation();
   const [searchMode, setSearchMode] = useState<SearchMode>("phone");
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SebayatRegistration[] | null>(null);
   const [singleResult, setSingleResult] = useState<SebayatRegistration | null | "notfound">(null);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
+  const [cacheSize, setCacheSize] = useState<number | null>(null);
+
+  useEffect(() => {
+    const unsub = connectivity.subscribe(() => setIsOffline(!connectivity.isOnline()));
+    loadSebayatListCache().then((list) => setCacheSize(list.length));
+    return unsub;
+  }, []);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -38,23 +49,28 @@ export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
     setSingleResult(null);
 
     try {
-      if (searchMode === "phone") {
-        const found = await searchSebayatByPhone(query.trim());
-        setSingleResult(found ?? "notfound");
-      } else {
-        const found = await searchSebayatByTempleId(query.trim());
-        setSingleResult(found ?? "notfound");
-      }
+      const found = await searchSebayatResilient(query.trim(), searchMode);
+      setSingleResult(found ?? "notfound");
     } catch {
-      setError("Search failed. Please try again.");
+      setError(t("supervisor.sebayatTickets.searchFailed"));
     } finally {
       setSearching(false);
     }
   };
 
   const modes: { key: SearchMode; label: string; icon: typeof Phone; placeholder: string }[] = [
-    { key: "phone", label: "Phone", icon: Phone, placeholder: "10-digit mobile number" },
-    { key: "templeid", label: "Temple ID", icon: IdCard, placeholder: "Temple ID card number" },
+    {
+      key: "phone",
+      label: t("supervisor.sebayatTickets.tabPhone"),
+      icon: Phone,
+      placeholder: t("supervisor.sebayatTickets.placeholderPhone"),
+    },
+    {
+      key: "templeid",
+      label: t("supervisor.sebayatTickets.tabTempleId"),
+      icon: IdCard,
+      placeholder: t("supervisor.sebayatTickets.placeholderTempleId"),
+    },
   ];
 
   const currentMode = modes.find((m) => m.key === searchMode)!;
@@ -70,6 +86,24 @@ export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+      {isOffline && cacheSize === 0 && (
+        <View style={styles.emptyCacheBanner}>
+          <WifiOff size={16} color="#92400E" />
+          <Text style={styles.emptyCacheBannerText}>{t("supervisor.sebayatTickets.offlineNoCacheWarning")}</Text>
+        </View>
+      )}
+      {isOffline && cacheSize !== null && cacheSize > 0 && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>
+            {t("common.offlineSearchNote")} {t("supervisor.sebayatTickets.offlineCacheCount", { count: cacheSize })}
+          </Text>
+        </View>
+      )}
+      {isOffline && cacheSize === null && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>{t("common.offlineSearchNote")}</Text>
+        </View>
+      )}
       <View style={styles.modeTabs}>
         {modes.map((mode) => {
           const Icon = mode.icon;
@@ -118,7 +152,7 @@ export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
           {searching ? (
             <ActivityIndicator size="small" color={COLORS.surface} />
           ) : (
-            <Text style={styles.searchButtonText}>Search</Text>
+            <Text style={styles.searchButtonText}>{t("supervisor.sebayatTickets.searchBtn")}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -131,18 +165,23 @@ export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
 
       {notFound && !searching && (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No sebayat found</Text>
+          <Text style={styles.emptyTitle}>{t("supervisor.sebayatTickets.notFound")}</Text>
           <Text style={styles.emptySubtext}>
-            No approved sebayat matches this{" "}
-            {searchMode === "phone" ? "phone number" : "temple ID"}.
+            {isOffline && cacheSize === 0
+              ? t("supervisor.sebayatTickets.notFoundOfflineNoCache")
+              : isOffline
+              ? t("supervisor.sebayatTickets.notFoundOffline")
+              : searchMode === "phone"
+              ? t("supervisor.sebayatTickets.notFoundPhone")
+              : t("supervisor.sebayatTickets.notFoundTempleId")}
           </Text>
         </View>
       )}
 
       {results !== null && results.length === 0 && !searching && (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No results</Text>
-          <Text style={styles.emptySubtext}>Try a different name.</Text>
+          <Text style={styles.emptyTitle}>{t("supervisor.sebayatTickets.notFound")}</Text>
+          <Text style={styles.emptySubtext}>{t("supervisor.sebayatTickets.searchFailed")}</Text>
         </View>
       )}
 
@@ -192,6 +231,35 @@ function SebayatCard({
 }
 
 const styles = StyleSheet.create({
+  offlineBanner: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+  },
+  offlineBannerText: {
+    fontSize: 12,
+    color: "#92400E",
+    textAlign: "center",
+  },
+  emptyCacheBanner: {
+    backgroundColor: "#FEF2F2",
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyCacheBannerText: {
+    fontSize: 12,
+    color: "#92400E",
+    flex: 1,
+  },
   modeTabs: {
     flexDirection: "row",
     backgroundColor: COLORS.surfaceSecondary,

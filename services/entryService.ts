@@ -1038,7 +1038,7 @@ export async function getSebayatEntriesByDateRange(
 ): Promise<GateEntry[]> {
   const { data, error } = await supabase
     .from("gate_entries")
-    .select("*")
+    .select("*, gumasta:gumastas(id, name, contact_number)")
     .eq("sebayat_id", sebayatId)
     .gte("entry_date", fromDate)
     .lte("entry_date", toDate)

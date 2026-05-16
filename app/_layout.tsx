@@ -96,7 +96,7 @@ function useGlobalConnectivity(sebayatId: string | null | undefined, isSuperviso
         window.removeEventListener("offline", handleOffline);
       }
     };
-  }, [sebayatId]);
+  }, [sebayatId, isSupervisor]);
 }
 
 function RootLayoutNav() {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,10 +6,13 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import { ArrowLeft, UserCheck } from "lucide-react-native";
+import { ArrowLeft, UserCheck, WifiOff } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 import { SebayatSearchPanel } from "./SebayatSearchPanel";
 import { DarshanTicketCreator } from "./DarshanTicketCreator";
 import { useAuth } from "@/context/AuthContext";
+import { connectivity } from "@/lib/offline";
+import { getOfflineModeEnabled } from "@/services/settingsService";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { SebayatRegistration } from "@/types/database";
 
@@ -19,7 +22,34 @@ interface StaffTicketCreatorProps {
 
 export function StaffTicketCreator({ onBack }: StaffTicketCreatorProps) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [selectedSebayat, setSelectedSebayat] = useState<SebayatRegistration | null>(null);
+  const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
+  const [offlineModeEnabled, setOfflineModeEnabled] = useState(true);
+
+  useEffect(() => {
+    getOfflineModeEnabled().then(setOfflineModeEnabled).catch(() => {});
+    const unsub = connectivity.subscribe(() => {
+      const offline = !connectivity.isOnline();
+      setIsOffline(offline);
+      if (offline) {
+        getOfflineModeEnabled().then(setOfflineModeEnabled).catch(() => {});
+      }
+    });
+    return unsub;
+  }, []);
+
+  const isBlocked = isOffline && !offlineModeEnabled;
+
+  if (isBlocked) {
+    return (
+      <View style={styles.blockedContainer}>
+        <WifiOff size={40} color={COLORS.textMuted} />
+        <Text style={styles.blockedTitle}>{t("supervisor.sebayatTickets.offlineDisabledTitle")}</Text>
+        <Text style={styles.blockedBody}>{t("supervisor.sebayatTickets.offlineDisabledBody")}</Text>
+      </View>
+    );
+  }
 
   if (selectedSebayat) {
     return (
@@ -34,7 +64,7 @@ export function StaffTicketCreator({ onBack }: StaffTicketCreatorProps) {
           <View style={styles.selectedBannerContent}>
             <UserCheck size={16} color={COLORS.success} />
             <View style={styles.selectedBannerText}>
-              <Text style={styles.selectedLabel}>Creating ticket for:</Text>
+              <Text style={styles.selectedLabel}>{t("supervisor.sebayatTickets.creatingFor")}</Text>
               <Text style={styles.selectedName}>{selectedSebayat.full_name}</Text>
               {selectedSebayat.category?.name && (
                 <Text style={styles.selectedCategory}>{selectedSebayat.category.name}</Text>
@@ -62,10 +92,8 @@ export function StaffTicketCreator({ onBack }: StaffTicketCreatorProps) {
   return (
     <View style={styles.flex}>
       <View style={styles.instructionCard}>
-        <Text style={styles.instructionTitle}>Search for a Sebayat</Text>
-        <Text style={styles.instructionText}>
-          Find an approved sebayat by phone number, health card ID, or temple ID, then create a darshan ticket on their behalf.
-        </Text>
+        <Text style={styles.instructionTitle}>{t("supervisor.sebayatTickets.searchTitle")}</Text>
+        <Text style={styles.instructionText}>{t("supervisor.sebayatTickets.searchInfo")}</Text>
       </View>
 
       <SebayatSearchPanel onSelect={setSelectedSebayat} />
@@ -144,5 +172,24 @@ const styles = StyleSheet.create({
   },
   ticketScrollContent: {
     paddingBottom: SPACING.xl,
+  },
+  blockedContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: SPACING.xl,
+    gap: SPACING.md,
+  },
+  blockedTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.text,
+    textAlign: "center",
+  },
+  blockedBody: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });

@@ -6,7 +6,11 @@ import {
   getCachedTickets,
   setCachedTickets,
   cacheGateEntries,
+  saveSebayatListCache,
+  saveActiveSlotSession,
+  loadSebayatListCache,
   todayString,
+  type CachedSebayat,
 } from "@/lib/offline";
 import {
   getDailyBookingCapPerUser,
@@ -24,6 +28,8 @@ import {
   getTodayEntries,
 } from "./entryService";
 import { getAvailableSlotsForToday, getSlotQuota } from "./slotService";
+import { getActiveSession } from "./slotSessionService";
+import { supabase } from "@/lib/supabase";
 
 let syncing = false;
 
@@ -45,6 +51,74 @@ export async function syncSupervisorDataLocally(): Promise<void> {
   } catch {
     // Silently fail — screens will use previously cached data
   }
+
+  // Cache the approved sebayat list for offline search
+  try {
+    const { data } = await supabase
+      .from("sebayat_registrations")
+      .select("id, full_name, phone_number, temple_health_card_id, temple_id_card_number, allotment_number, photo_url, approval_status, category:categories(name)")
+      .eq("approval_status", "approved")
+      .order("full_name");
+
+    if (data) {
+      const sebayatList: CachedSebayat[] = data.map((s: any) => ({
+        id: s.id,
+        full_name: s.full_name,
+        phone_number: s.phone_number,
+        temple_health_card_id: s.temple_health_card_id ?? null,
+        temple_id_card_number: s.temple_id_card_number ?? null,
+        allotment_number: s.allotment_number ?? null,
+        photo_url: s.photo_url,
+        category_name: s.category?.name ?? null,
+        approval_status: s.approval_status,
+      }));
+      await saveSebayatListCache(sebayatList);
+    }
+  } catch {
+    // Keep previous cached list
+  }
+
+  // Cache active slot session so supervisors know if a session is running
+  try {
+    const session = await getActiveSession();
+    if (session) {
+      await saveActiveSlotSession({
+        id: session.id,
+        slot_id: session.slot_id,
+        slot_name: (session as any).slot?.name ?? "",
+        status: session.status as "active" | "ended",
+        started_at: session.started_at,
+        savedAt: new Date().toISOString(),
+      });
+    } else {
+      await saveActiveSlotSession(null);
+    }
+  } catch {
+    // Keep previous cached session state
+  }
+
+  await saveLastSyncTime();
+}
+
+export async function getSupervisorCacheSummary(): Promise<{ sebayatCount: number; lastSyncedAt: string | null }> {
+  const [list, lastSync] = await Promise.all([
+    loadSebayatListCache(),
+    import("@/lib/offline").then((m) => m.loadLastSyncTime()),
+  ]);
+  return { sebayatCount: list.length, lastSyncedAt: lastSync };
+}
+
+// After outbox flush, refresh quota ledgers for any sebayats that had offline
+// gate events so the local ledger aligns with the authoritative server state.
+export async function reconcileQuotaLedgersAfterSync(sebayatIds: string[]): Promise<void> {
+  const date = todayString();
+  const unique = [...new Set(sebayatIds)];
+  await Promise.allSettled(
+    unique.map(async (id) => {
+      const q = await getSebayatDailyQuota(id, date);
+      await saveServerQuota(id, date, q);
+    })
+  );
 }
 
 export async function syncAllDataLocally(sebayatId: string): Promise<void> {

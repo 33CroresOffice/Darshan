@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { CloudOff, RefreshCw, Cloud } from "lucide-react-native";
 import { connectivity, flushOutbox, getOutbox, probeConnectivity, subscribeOutbox } from "@/lib/offline";
+import { reconcileQuotaLedgersAfterSync, syncSupervisorDataLocally } from "@/services/backgroundSyncService";
 import { COLORS, SPACING, RADIUS } from "@/constants/config";
 
 export function OfflineBanner() {
@@ -42,12 +43,23 @@ export function OfflineBanner() {
       setSyncing(false);
       return;
     }
+    // Collect sebayat IDs from outbox before flushing for quota reconciliation
+    const outboxItems = await getOutbox();
+    const sebayatIds = outboxItems
+      .map((item) => item.payload?.sebayatId as string | undefined)
+      .filter((id): id is string => !!id);
+
     const result = await flushOutbox();
     setPending(result.remaining);
     setSyncing(false);
     if (result.processed > 0 && result.remaining === 0) {
       setJustSynced(true);
       setTimeout(() => setJustSynced(false), 2500);
+      // Reconcile quota ledgers and refresh supervisor caches
+      if (sebayatIds.length > 0) {
+        reconcileQuotaLedgersAfterSync(sebayatIds).catch(() => {});
+      }
+      syncSupervisorDataLocally().catch(() => {});
     }
   };
 

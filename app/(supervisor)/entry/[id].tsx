@@ -18,10 +18,12 @@ import {
   X as XCircle,
   MapPin,
   FileText,
+  WifiOff,
 } from "lucide-react-native";
 import { getEntryById, getEntryAuditLogs } from "@/services/entryService";
 import { getGumastaById } from "@/services/gumastaService";
 import { GumastaInfoCard } from "@/components/tickets/GumastaInfoCard";
+import { connectivity, loadCachedGateEntries } from "@/lib/offline";
 import { COLORS, SHADOWS } from "@/constants/config";
 import type { GateEntry, EntryAuditLog, EntryStatus, EntryAction, Gumasta } from "@/types/database";
 import { useTranslation } from "react-i18next";
@@ -41,6 +43,8 @@ export default function EntryDetailScreen() {
   const [entryGumasta, setEntryGumasta] = useState<Gumasta | null>(null);
   const [auditLogs, setAuditLogs] = useState<EntryAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   const STATUS_CONFIG: Record<EntryStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
     registered: { label: t('supervisor.entry.statusPending'), ...STATUS_STYLE.registered },
@@ -70,25 +74,69 @@ export default function EntryDetailScreen() {
   }, [entry?.gumasta_id]);
 
   const loadEntry = async () => {
+    // Try to find entry in local caches immediately for offline support
+    let cachedEntry: GateEntry | null = null;
+    const cacheScopes = ["supervisor:today", "supervisor:pending", "inner_gate:pending", "west_gate:pending"];
+    for (const scope of cacheScopes) {
+      try {
+        const cached = await loadCachedGateEntries(scope);
+        const found = cached.find((e) => e.id === id);
+        if (found) {
+          cachedEntry = found;
+          setEntry(found);
+          setOfflineMode(!connectivity.isOnline());
+          break;
+        }
+      } catch {}
+    }
+
+    if (!connectivity.isOnline()) {
+      setLoading(false);
+      if (!cachedEntry) setNotFound(true);
+      return;
+    }
+
     try {
       const [entryData, logs] = await Promise.all([
         getEntryById(id!),
         getEntryAuditLogs(id!),
       ]);
-      setEntry(entryData);
-      setAuditLogs(logs);
+      if (entryData) {
+        setEntry(entryData);
+        setAuditLogs(logs);
+        setOfflineMode(false);
+        setNotFound(false);
+      } else {
+        setNotFound(true);
+      }
     } catch (err) {
       console.error("Failed to load entry:", err);
+      if (!cachedEntry) setNotFound(true);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading || !entry) {
+  if (loading) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>{t('supervisor.entry.loading')}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (notFound || !entry) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <WifiOff size={40} color={COLORS.textMuted} />
+          <Text style={[styles.loadingText, { marginTop: 12 }]}>{t('common.offlineNotAvailable')}</Text>
+          <TouchableOpacity style={styles.backButtonSmall} onPress={() => router.back()}>
+            <ArrowLeft size={18} color={COLORS.primary} />
+            <Text style={styles.backButtonSmallText}>{t('common.back')}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -100,6 +148,12 @@ export default function EntryDetailScreen() {
 
   return (
     <View style={styles.container}>
+      {offlineMode && (
+        <View style={styles.offlineBanner}>
+          <WifiOff size={14} color="#92400E" />
+          <Text style={styles.offlineBannerText}>{t('common.offlineCachedData')}</Text>
+        </View>
+      )}
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -328,6 +382,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF3C7",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F59E0B",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  offlineBannerText: {
+    fontSize: 12,
+    color: "#92400E",
+    flex: 1,
+  },
+  backButtonSmall: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: COLORS.primaryLight,
+  },
+  backButtonSmallText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: "600",
   },
   content: {
     padding: 20,

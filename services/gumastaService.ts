@@ -154,27 +154,46 @@ export async function getTicketsByGumasta(
   return data ?? [];
 }
 
+async function uriToBlob(uri: string): Promise<Blob> {
+  if (uri.startsWith("data:")) {
+    const [header, base64Data] = uri.split(",");
+    const mimeMatch = header.match(/data:([^;]+)/);
+    const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const byteChars = atob(base64Data);
+    const byteArrays: Uint8Array[] = [];
+    for (let offset = 0; offset < byteChars.length; offset += 512) {
+      const slice = byteChars.slice(offset, offset + 512);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
+      byteArrays.push(new Uint8Array(byteNumbers));
+    }
+    return new Blob(byteArrays, { type: mime });
+  }
+  const response = await fetch(uri);
+  if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+  return response.blob();
+}
+
 export async function uploadGumastaPhoto(
   sebayatId: string,
   gumastaId: string,
   uri: string
 ): Promise<string> {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const fileExt = uri.split(".").pop() || "jpg";
+  const blob = await uriToBlob(uri);
+  const mimeType = blob.type || "image/jpeg";
+  const fileExt = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
   const filePath = `gumastas/${sebayatId}/${gumastaId}.${fileExt}`;
 
   const { error: uploadError } = await supabase.storage
-    .from("registrations")
-    .upload(filePath, arrayBuffer, {
-      contentType: `image/${fileExt}`,
+    .from("profile-photos")
+    .upload(filePath, blob, {
+      contentType: mimeType,
       upsert: true,
     });
 
   if (uploadError) throw new Error(normaliseError(uploadError));
 
-  const { data } = supabase.storage.from("registrations").getPublicUrl(filePath);
+  const { data } = supabase.storage.from("profile-photos").getPublicUrl(filePath);
   return data.publicUrl;
 }
 
@@ -266,21 +285,20 @@ export async function uploadGumastaAadhar(
   gumastaId: string,
   uri: string
 ): Promise<string> {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const fileExt = uri.split(".").pop() || "jpg";
+  const blob = await uriToBlob(uri);
+  const mimeType = blob.type || "image/jpeg";
+  const fileExt = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
   const filePath = `gumastas/${sebayatId}/${gumastaId}_aadhar.${fileExt}`;
 
   const { error: uploadError } = await supabase.storage
-    .from("registrations")
-    .upload(filePath, arrayBuffer, {
-      contentType: `image/${fileExt}`,
+    .from("id-documents")
+    .upload(filePath, blob, {
+      contentType: mimeType,
       upsert: true,
     });
 
   if (uploadError) throw new Error(normaliseError(uploadError));
 
-  const { data } = supabase.storage.from("registrations").getPublicUrl(filePath);
+  const { data } = supabase.storage.from("id-documents").getPublicUrl(filePath);
   return data.publicUrl;
 }

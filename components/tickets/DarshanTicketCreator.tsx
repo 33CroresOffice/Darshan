@@ -36,6 +36,7 @@ import {
 } from "@/services/entryService";
 import {
   createTicketResilient,
+  createTicketForStaffResilient,
   cancelTicketResilient,
   editTicketCountResilient,
   getTodayTicketsResilient,
@@ -90,6 +91,12 @@ export function DarshanTicketCreator({
   const [printTokenEnabled, setPrintTokenEnabled] = useState(false);
   const [printTokenIncludePhoto, setPrintTokenIncludePhoto] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
+
+  useEffect(() => {
+    const unsub = connectivity.subscribe(() => setIsOffline(!connectivity.isOnline()));
+    return unsub;
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!sebayatRegistrationId) return;
@@ -155,12 +162,22 @@ export function DarshanTicketCreator({
     setCreating(true);
     setCreateError(null);
 
-    const result = await createTicketResilient(
-      sebayatRegistrationId,
-      devoteeCount,
-      selectedSlotId,
-      selectedEntryMode
-    );
+    const result =
+      staffMode && staffUserId
+        ? await createTicketForStaffResilient(
+            sebayatRegistrationId,
+            staffUserId,
+            devoteeCount,
+            selectedSlotId,
+            selectedEntryMode
+          )
+        : await createTicketResilient(
+            sebayatRegistrationId,
+            devoteeCount,
+            selectedSlotId,
+            selectedEntryMode
+          );
+
     if (result.success && result.entry) {
       setCreatedTicket(result.entry);
       setShowCreateModal(false);
@@ -317,7 +334,12 @@ export function DarshanTicketCreator({
           </Text>
         </View>
 
-        {quota.remainingCount <= 0 ? (
+        {isOffline ? (
+          <View style={styles.offlineBlockBanner}>
+            <AlertCircle size={18} color={COLORS.warning} />
+            <Text style={styles.offlineBlockText}>{t("supervisor.darshanTickets.offlineCreateDisabled")}</Text>
+          </View>
+        ) : quota.remainingCount <= 0 ? (
           <View style={styles.quotaExhaustedBanner}>
             <AlertCircle size={18} color={COLORS.error} />
             <Text style={styles.quotaExhaustedText}>{t("supervisor.darshanTickets.quotaExhausted")}</Text>
@@ -405,7 +427,7 @@ export function DarshanTicketCreator({
                       </Text>
                       {ticket.entry_mode === "marjana_mandap" ? (
                         <View style={styles.innerGateBadge}>
-                          <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                          <Text style={styles.innerGateBadgeText}>{t("supervisor.darshanTickets.innerGateBadge")}</Text>
                         </View>
                       ) : (
                         <View style={styles.ticketTimeRow}>
@@ -1295,6 +1317,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
+  },
+  offlineBlockBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    backgroundColor: COLORS.warning + "15",
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.warning + "30",
+  },
+  offlineBlockText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.warning,
   },
   quotaExhaustedBanner: {
     flexDirection: "row",

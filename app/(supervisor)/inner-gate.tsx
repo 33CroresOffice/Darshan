@@ -40,20 +40,19 @@ import { AdminHeader } from "@/components/layout/AdminHeader";
 import { useTranslation } from "react-i18next";
 import {
   getEntryByCode,
-  searchEntryByQR,
   verifyInnerGateEntry,
-  adjustDevoteeCount,
-  flagEntryDiscrepancy,
   getPendingVerifications,
   getSebayatDailyQuota,
-  searchSebayatByPhone,
   getSebayatPendingTickets,
 } from "@/services/entryService";
 import {
   resolveScannedTicket,
   recordInnerGateEventResilient,
+  flagEntryDiscrepancyResilient,
+  searchSebayatResilient,
+  getEffectiveQuota,
 } from "@/services/offlineEntryService";
-import { connectivity, cacheGateEntries, loadCachedGateEntries } from "@/lib/offline";
+import { connectivity, cacheGateEntries, loadCachedGateEntries, loadSebayatListCache } from "@/lib/offline";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { GumastaInfoCard } from "@/components/tickets/GumastaInfoCard";
 import { getGumastaById } from "@/services/gumastaService";
@@ -98,6 +97,21 @@ export default function InnerGateScreen() {
   const [loadingPending, setLoadingPending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [phoneValue, setPhoneValue] = useState("");
+  const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
+
+  useEffect(() => {
+    const unsub = connectivity.subscribe(() => {
+      const offline = !connectivity.isOnline();
+      setIsOffline(offline);
+      if (offline && (searchMode === "code" || searchMode === "phone")) {
+        setSearchMode("qr");
+        setEntryCode("");
+        setPhoneValue("");
+        setError(null);
+      }
+    });
+    return unsub;
+  }, [searchMode]);
 
   useEffect(() => {
     if (entry?.gumasta_id) {
@@ -162,21 +176,36 @@ export default function InnerGateScreen() {
 
     try {
       if (searchMode === "phone") {
-        const sebayat = await searchSebayatByPhone(searchVal);
+        const sebayat = await searchSebayatResilient(searchVal, "phone");
         if (!sebayat) {
           setError(t('supervisor.westGate.noSebayatPhone'));
           return;
         }
-        const tickets = await getSebayatPendingTickets(sebayat.id);
-        const activeTicket = tickets.find(
-          (tk) => tk.status === "registered" || tk.status === "acknowledged"
-        );
-        if (activeTicket) {
-          setEntry(activeTicket);
-          setVerifiedCount(activeTicket.declared_devotee_count);
-          loadEntryQuota(activeTicket);
+        if (connectivity.isOnline()) {
+          const tickets = await getSebayatPendingTickets(sebayat.id);
+          const activeTicket = tickets.find(
+            (tk) => tk.status === "registered" || tk.status === "acknowledged"
+          );
+          if (activeTicket) {
+            setEntry(activeTicket);
+            setVerifiedCount(activeTicket.declared_devotee_count);
+            loadEntryQuota(activeTicket);
+          } else {
+            setError(t('supervisor.innerGate.notFound'));
+          }
         } else {
-          setError(t('supervisor.innerGate.notFound'));
+          // Offline: load from inner_gate pending cache
+          const cachedPending = await loadCachedGateEntries(CACHE_SCOPE_INNER_PENDING);
+          const activeTicket = cachedPending.find(
+            (tk) => tk.sebayat_id === sebayat.id && (tk.status === "registered" || (tk as any).status === "acknowledged")
+          );
+          if (activeTicket) {
+            setEntry(activeTicket);
+            setVerifiedCount(activeTicket.declared_devotee_count);
+            loadEntryQuota(activeTicket);
+          } else {
+            setError(t('supervisor.innerGate.notFound'));
+          }
         }
         return;
       }
@@ -235,7 +264,13 @@ export default function InnerGateScreen() {
           loadEntryQuota(found);
         }
       } else if (resolved.source === "offline_payload" && resolved.idempotencyKey && resolved.declaredCount !== null && resolved.sebayatId) {
-        // Trust the QR payload — supervisor can verify offline
+        // Resolve sebayat identity from local cache for display
+        const cachedList = await loadSebayatListCache();
+        const cachedSebayat = cachedList.find((s) => s.id === resolved.sebayatId);
+        const sebayatJoin = cachedSebayat
+          ? { full_name: cachedSebayat.full_name, phone_number: cachedSebayat.phone_number, photo_url: cachedSebayat.photo_url, category: cachedSebayat.category_name ? { name: cachedSebayat.category_name } : null }
+          : null;
+
         setOfflineMode(true);
         setOfflineEntry({
           idempotencyKey: resolved.idempotencyKey,
@@ -243,7 +278,6 @@ export default function InnerGateScreen() {
           declaredCount: resolved.declaredCount,
           sebayatId: resolved.sebayatId,
         });
-        // Synthesize a minimal entry so the existing UI renders
         const synthesized: GateEntry = {
           id: resolved.idempotencyKey,
           entry_code: resolved.entryCode,
@@ -264,6 +298,7 @@ export default function InnerGateScreen() {
           entry_mode: "west_gate",
           idempotency_key: resolved.idempotencyKey,
           offline_origin: true,
+          sebayat: sebayatJoin,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -295,8 +330,9 @@ export default function InnerGateScreen() {
 
   const loadEntryQuota = async (found: GateEntry) => {
     try {
-      const quota = await getSebayatDailyQuota(found.sebayat_id, found.entry_date);
-      // declared count is already counted in used; max increase = remainingCount
+      const quota = connectivity.isOnline()
+        ? await getSebayatDailyQuota(found.sebayat_id, found.entry_date)
+        : await getEffectiveQuota(found.sebayat_id);
       setMaxVerifiedCount(found.declared_devotee_count + quota.remainingCount);
     } catch {
       setMaxVerifiedCount(found.declared_devotee_count);
@@ -327,6 +363,8 @@ export default function InnerGateScreen() {
           supervisorId: profile.id,
           verifiedCount,
           reason: needsReason ? adjustReason.trim() : undefined,
+          sebayatId: offlineEntry.sebayatId,
+          entryCode: offlineEntry.entryCode,
         });
         const fakeEntry: GateEntry = {
           id: offlineEntry.idempotencyKey,
@@ -370,13 +408,14 @@ export default function InnerGateScreen() {
     setError(null);
 
     try {
-      // If we're offline, route through resilient path using the entry's idempotency key
       if (!connectivity.isOnline() && entry.idempotency_key) {
         const r = await recordInnerGateEventResilient({
           idempotencyKey: entry.idempotency_key,
           supervisorId: profile.id,
           verifiedCount,
           reason: needsReason ? adjustReason.trim() : undefined,
+          sebayatId: entry.sebayat_id,
+          entryCode: entry.entry_code,
         });
         const merged: GateEntry = {
           ...entry,
@@ -415,7 +454,7 @@ export default function InnerGateScreen() {
     setError(null);
 
     try {
-      const flagResult = await flagEntryDiscrepancy(
+      const flagResult = await flagEntryDiscrepancyResilient(
         entry.id,
         flagReason.trim(),
         profile.id
@@ -670,14 +709,15 @@ export default function InnerGateScreen() {
               <>
                 <View style={styles.modeSelector}>
                   <TouchableOpacity
-                    style={[styles.modeButton, searchMode === "code" && styles.modeButtonActive]}
-                    onPress={() => { setSearchMode("code"); setEntryCode(""); }}
-                    activeOpacity={0.8}
+                    style={[styles.modeButton, searchMode === "code" && styles.modeButtonActive, isOffline && styles.modeButtonDisabled]}
+                    onPress={() => { if (!isOffline) { setSearchMode("code"); setEntryCode(""); } }}
+                    activeOpacity={isOffline ? 1 : 0.8}
                   >
-                    <Ticket size={18} color={searchMode === "code" ? "#fff" : COLORS.textSecondary} />
-                    <Text style={[styles.modeButtonText, searchMode === "code" && styles.modeButtonTextActive]}>
+                    <Ticket size={18} color={isOffline ? COLORS.textMuted : searchMode === "code" ? "#fff" : COLORS.textSecondary} />
+                    <Text style={[styles.modeButtonText, searchMode === "code" && styles.modeButtonTextActive, isOffline && styles.modeButtonTextDisabled]}>
                       {t('supervisor.westGate.code')}
                     </Text>
+                    {isOffline && <Text style={styles.modeButtonDisabledHint}>{t('supervisor.westGate.requiresInternet')}</Text>}
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modeButton, searchMode === "qr" && styles.modeButtonActive]}
@@ -690,14 +730,15 @@ export default function InnerGateScreen() {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.modeButton, searchMode === "phone" && styles.modeButtonActive]}
-                    onPress={() => { setSearchMode("phone"); setPhoneValue(""); }}
-                    activeOpacity={0.8}
+                    style={[styles.modeButton, searchMode === "phone" && styles.modeButtonActive, isOffline && styles.modeButtonDisabled]}
+                    onPress={() => { if (!isOffline) { setSearchMode("phone"); setPhoneValue(""); } }}
+                    activeOpacity={isOffline ? 1 : 0.8}
                   >
-                    <Phone size={18} color={searchMode === "phone" ? "#fff" : COLORS.textSecondary} />
-                    <Text style={[styles.modeButtonText, searchMode === "phone" && styles.modeButtonTextActive]}>
+                    <Phone size={18} color={isOffline ? COLORS.textMuted : searchMode === "phone" ? "#fff" : COLORS.textSecondary} />
+                    <Text style={[styles.modeButtonText, searchMode === "phone" && styles.modeButtonTextActive, isOffline && styles.modeButtonTextDisabled]}>
                       {t('supervisor.westGate.phone')}
                     </Text>
+                    {isOffline && <Text style={styles.modeButtonDisabledHint}>{t('supervisor.westGate.requiresInternet')}</Text>}
                   </TouchableOpacity>
                 </View>
 
@@ -1233,6 +1274,18 @@ const styles = StyleSheet.create({
   },
   modeButtonTextActive: {
     color: "#fff",
+  },
+  modeButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: COLORS.surfaceSecondary,
+  },
+  modeButtonTextDisabled: {
+    color: COLORS.textMuted,
+  },
+  modeButtonDisabledHint: {
+    fontSize: 8,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   scanButton: {
     backgroundColor: COLORS.surface,

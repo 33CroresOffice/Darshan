@@ -22,6 +22,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  UserCheck,
+  Phone,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
@@ -595,7 +597,7 @@ export default function HistoryScreen() {
                             </View>
                             {entry.entry_mode === "marjana_mandap" && (
                               <View style={styles.innerGateBadge}>
-                                <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                                <Text style={styles.innerGateBadgeText}>{t("app.history.innerGateBadge")}</Text>
                               </View>
                             )}
                             <View style={[styles.statusBadge, { backgroundColor: cfg.color + "18" }]}>
@@ -631,6 +633,18 @@ export default function HistoryScreen() {
                             )}
                             {entry.notes && (
                               <Text style={styles.entryNotes}>{entry.notes}</Text>
+                            )}
+                            {entry.gumasta && (
+                              <View style={styles.gumastaRow}>
+                                <View style={styles.gumastaInfo}>
+                                  <UserCheck size={13} color={COLORS.primary} />
+                                  <Text style={styles.gumastaName}>{entry.gumasta.name}</Text>
+                                </View>
+                                <View style={styles.gumastaPhone}>
+                                  <Phone size={12} color={COLORS.textSecondary} />
+                                  <Text style={styles.gumastaPhoneText}>{entry.gumasta.contact_number}</Text>
+                                </View>
+                              </View>
                             )}
                           </View>
                         </View>
@@ -1012,5 +1026,32 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontStyle: "italic",
     marginTop: 2,
+  },
+  gumastaRow: {
+    marginTop: SPACING.xs,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    gap: 3,
+  },
+  gumastaInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  gumastaName: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+  gumastaPhone: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingLeft: 18,
+  },
+  gumastaPhoneText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
   },
 });

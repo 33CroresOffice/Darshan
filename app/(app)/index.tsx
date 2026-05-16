@@ -80,6 +80,16 @@ export default function HomeScreen() {
   const { registration, profile, refreshRegistration } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [quota, setQuota] = useState<SebayatQuota | null>(null);
+  // Pre-load quota from dated cache before the first async call completes, eliminating null→value flicker
+  const quotaPreloaded = useRef(false);
+  useEffect(() => {
+    if (!registration?.id || quotaPreloaded.current) return;
+    quotaPreloaded.current = true;
+    const todayDate = new Date().toISOString().split("T")[0];
+    readCache<SebayatQuota>(CACHE_QUOTA_KEY(registration.id, todayDate)).then((cached) => {
+      if (cached) setQuota((prev) => prev ?? cached);
+    });
+  }, [registration?.id]);
   const [showQRModal, setShowQRModal] = useState(false);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -87,6 +97,29 @@ export default function HomeScreen() {
   const [selectedTicket, setSelectedTicket] = useState<GateEntry | null>(null);
   const [pendingTickets, setPendingTickets] = useState<GateEntry[]>([]);
   const [todayTickets, setTodayTickets] = useState<GateEntry[]>([]);
+  // Pre-load tickets from cache to eliminate [] → data flicker
+  const ticketsPreloaded = useRef(false);
+  useEffect(() => {
+    if (!registration?.id || ticketsPreloaded.current) return;
+    ticketsPreloaded.current = true;
+    const todayDate = new Date().toISOString().split("T")[0];
+    Promise.all([
+      readCache<GateEntry[]>(CACHE_TODAY_KEY(registration.id, todayDate)),
+      getCachedTickets(registration.id, todayDate),
+    ]).then(([cachedToday, offlineToday]) => {
+      const merged = new Map([
+        ...((cachedToday ?? []).map((t) => [t.id, t] as [string, GateEntry])),
+        ...(offlineToday.map((t) => [t.id, t] as [string, GateEntry])),
+      ]);
+      const list = Array.from(merged.values()).sort((a, b) => b.created_at.localeCompare(a.created_at));
+      if (list.length > 0) {
+        setTodayTickets((prev) => prev.length > 0 ? prev : list);
+        setPendingTickets((prev) =>
+          prev.length > 0 ? prev : list.filter((t) => t.entry_date === todayDate && (t.status === "pending" || t.status === "registered"))
+        );
+      }
+    });
+  }, [registration?.id]);
   const [devoteeCount, setDevoteeCount] = useState(1);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -107,11 +140,19 @@ export default function HomeScreen() {
     const todayDate = new Date().toISOString().split("T")[0];
     // Paint today's cache immediately; skip if we have no dated entry (avoids painting stale yesterday data)
     const cachedQuota = await readCache<SebayatQuota>(CACHE_QUOTA_KEY(registration.id, todayDate));
-    if (cachedQuota) setQuota(cachedQuota);
+    if (cachedQuota) {
+      setQuota((prev) => {
+        if (prev && prev.usedCount === cachedQuota.usedCount && prev.maxLimit === cachedQuota.maxLimit) return prev;
+        return cachedQuota;
+      });
+    }
     // Always attempt network — getEffectiveQuota handles offline internally
     try {
       const q = await getEffectiveQuota(registration.id);
-      setQuota(q);
+      setQuota((prev) => {
+        if (prev && prev.usedCount === q.usedCount && prev.maxLimit === q.maxLimit && prev.remainingCount === q.remainingCount) return prev;
+        return q;
+      });
       await writeCache(CACHE_QUOTA_KEY(registration.id, todayDate), q);
     } catch {
       // Leave the cached value that was painted above
@@ -698,7 +739,7 @@ export default function HomeScreen() {
                       </Text>
                       {isInnerGate ? (
                         <View style={styles.innerGateBadge}>
-                          <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                          <Text style={styles.innerGateBadgeText}>{t("app.home.innerGateBadge")}</Text>
                         </View>
                       ) : isRegistered ? (
                         <View style={styles.ticketAtGateRow}>

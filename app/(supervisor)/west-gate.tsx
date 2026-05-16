@@ -40,14 +40,11 @@ import { AdminHeader } from "@/components/layout/AdminHeader";
 import { useTranslation } from "react-i18next";
 import { useLocalizedNumber } from "@/hooks/useLocalizedNumber";
 import {
-  searchSebayatByPhone,
   searchSebayatByQR,
   getSebayatDailyQuota,
-  registerWestGateEntry,
   getWestGatePendingAcknowledgments,
   acknowledgeWestGateEntry,
   getEntryByCode,
-  searchEntryByQR,
   isTicketExpired,
   getTicketTimeRemaining,
   getSebayatPendingTickets,
@@ -56,7 +53,12 @@ import { getActiveSession } from "@/services/slotSessionService";
 import {
   resolveScannedTicket,
   recordWestGateEventResilient,
+  searchSebayatResilient,
+  getEffectiveQuota,
+  registerWestGateEntryResilient,
+  getGateLog,
 } from "@/services/offlineEntryService";
+import { loadSebayatListCache, type GateLogEntry } from "@/lib/offline";
 import {
   getPrintTokenEnabled,
   getPrintTokenIncludePhoto,
@@ -104,7 +106,23 @@ export default function WestGateScreen() {
   const [showAcknowledgeModal, setShowAcknowledgeModal] = useState(false);
   const [showTokenPreview, setShowTokenPreview] = useState(false);
   const [tokenPreviewHtml, setTokenPreviewHtml] = useState("");
+  const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
+  const [gateActivityLog, setGateActivityLog] = useState<GateLogEntry[]>([]);
   const scannerRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const unsub = connectivity.subscribe(() => {
+      const offline = !connectivity.isOnline();
+      setIsOffline(offline);
+      if (offline && (searchMode === "code" || searchMode === "phone")) {
+        setSearchMode("qr");
+        setSearchValue("");
+        setError(null);
+        setSebayat(null);
+      }
+    });
+    return unsub;
+  }, [searchMode]);
 
   useEffect(() => {
     if (selectedEntry?.gumasta_id) {
@@ -156,7 +174,9 @@ export default function WestGateScreen() {
 
   const loadQuota = async () => {
     if (!sebayat) return;
-    const quotaData = await getSebayatDailyQuota(sebayat.id);
+    const quotaData = connectivity.isOnline()
+      ? await getSebayatDailyQuota(sebayat.id)
+      : await getEffectiveQuota(sebayat.id);
     setQuota(quotaData);
     if (devoteeCount > quotaData.remainingCount && quotaData.remainingCount > 0) {
       setDevoteeCount(quotaData.remainingCount);
@@ -200,12 +220,18 @@ export default function WestGateScreen() {
           setError(t('supervisor.westGate.noTicketFound'));
         }
       } else if (searchMode === "phone") {
-        const found = await searchSebayatByPhone(searchValue.trim());
+        const found = await searchSebayatResilient(searchValue.trim(), "phone");
         if (found) {
           setSebayat(found);
           setDevoteeCount(1);
-          const tickets = await getSebayatPendingTickets(found.id);
-          setSebayatPendingTickets(tickets);
+          if (connectivity.isOnline()) {
+            const tickets = await getSebayatPendingTickets(found.id);
+            setSebayatPendingTickets(tickets);
+          } else {
+            setSebayatPendingTickets([]);
+          }
+          const log = await getGateLog(found.id);
+          setGateActivityLog(log);
         } else {
           setError(t('supervisor.westGate.noSebayatPhone'));
         }
@@ -240,7 +266,13 @@ export default function WestGateScreen() {
       }
 
       if (resolved && resolved.source === "offline_payload" && resolved.idempotencyKey && resolved.declaredCount !== null && resolved.sebayatId) {
-        // Build a synthetic entry for the UI; supervisor will acknowledge offline
+        // Resolve sebayat identity from local cache for display
+        const cachedList = await loadSebayatListCache();
+        const cachedSebayat = cachedList.find((s) => s.id === resolved.sebayatId);
+        const sebayatJoin = cachedSebayat
+          ? { full_name: cachedSebayat.full_name, phone_number: cachedSebayat.phone_number, photo_url: cachedSebayat.photo_url, category: cachedSebayat.category_name ? { name: cachedSebayat.category_name } : null }
+          : null;
+
         const synthesized: GateEntry = {
           id: resolved.idempotencyKey,
           entry_code: resolved.entryCode,
@@ -261,6 +293,7 @@ export default function WestGateScreen() {
           entry_mode: "west_gate",
           idempotency_key: resolved.idempotencyKey,
           offline_origin: true,
+          sebayat: sebayatJoin,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -320,6 +353,8 @@ export default function WestGateScreen() {
           idempotencyKey: entry.idempotency_key,
           supervisorId: profile.id,
           actualCount: entry.declared_devotee_count,
+          sebayatId: entry.sebayat_id,
+          entryCode: entry.entry_code,
         });
         if (r.success) {
           const synthEntry: GateEntry = {
@@ -376,7 +411,7 @@ export default function WestGateScreen() {
     setError(null);
 
     try {
-      const entryResult = await registerWestGateEntry(
+      const entryResult = await registerWestGateEntryResilient(
         sebayat.id,
         devoteeCount,
         profile.id
@@ -402,6 +437,7 @@ export default function WestGateScreen() {
     setError(null);
     setResult(null);
     setSebayatPendingTickets([]);
+    setGateActivityLog([]);
     setShowAcknowledgeModal(false);
     setShowTokenPreview(false);
   };
@@ -450,14 +486,21 @@ export default function WestGateScreen() {
     mode,
     icon,
     label,
+    disabled,
   }: {
     mode: SearchMode;
     icon: React.ReactNode;
     label: string;
+    disabled?: boolean;
   }) => (
     <TouchableOpacity
-      style={[styles.modeButton, searchMode === mode && styles.modeButtonActive]}
+      style={[
+        styles.modeButton,
+        searchMode === mode && styles.modeButtonActive,
+        disabled && styles.modeButtonDisabled,
+      ]}
       onPress={() => {
+        if (disabled) return;
         setSearchMode(mode);
         setSearchValue("");
         setError(null);
@@ -465,17 +508,21 @@ export default function WestGateScreen() {
         setSelectedEntry(null);
         setSebayatPendingTickets([]);
       }}
-      activeOpacity={0.7}
+      activeOpacity={disabled ? 1 : 0.7}
     >
       {icon}
       <Text
         style={[
           styles.modeButtonText,
           searchMode === mode && styles.modeButtonTextActive,
+          disabled && styles.modeButtonTextDisabled,
         ]}
       >
         {label}
       </Text>
+      {disabled && (
+        <Text style={styles.modeButtonDisabledHint}>{t('supervisor.westGate.requiresInternet')}</Text>
+      )}
     </TouchableOpacity>
   );
 
@@ -632,10 +679,11 @@ export default function WestGateScreen() {
                   icon={
                     <Ticket
                       size={18}
-                      color={searchMode === "code" ? "#fff" : COLORS.textSecondary}
+                      color={isOffline ? COLORS.textMuted : searchMode === "code" ? "#fff" : COLORS.textSecondary}
                     />
                   }
                   label={t('supervisor.westGate.code')}
+                  disabled={isOffline}
                 />
                 <SearchModeButton
                   mode="qr"
@@ -652,10 +700,11 @@ export default function WestGateScreen() {
                   icon={
                     <Phone
                       size={18}
-                      color={searchMode === "phone" ? "#fff" : COLORS.textSecondary}
+                      color={isOffline ? COLORS.textMuted : searchMode === "phone" ? "#fff" : COLORS.textSecondary}
                     />
                   }
                   label={t('supervisor.westGate.phone')}
+                  disabled={isOffline}
                 />
               </View>
 
@@ -970,7 +1019,32 @@ export default function WestGateScreen() {
                 >
                   {t('supervisor.westGate.quotaRemaining', { count: quota.remainingCount })}
                 </Text>
+                {isOffline && (
+                  <Text style={styles.quotaOfflineNote}>{t('supervisor.westGate.offlineEstimate')}</Text>
+                )}
               </View>
+
+              {isOffline && gateActivityLog.length > 0 && (
+                <View style={styles.gateLogSection}>
+                  <Text style={styles.gateLogTitle}>{t('supervisor.westGate.todayActivity')}</Text>
+                  {gateActivityLog.map((log, idx) => (
+                    <View key={idx} style={styles.gateLogItem}>
+                      <Text style={styles.gateLogTime}>
+                        {new Date(log.timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                      <Text style={styles.gateLogGate}>
+                        {log.gate === "west" ? t('supervisor.westGate.title') : t('supervisor.innerGate.title')}
+                      </Text>
+                      <Text style={styles.gateLogCount}>
+                        {log.count} {log.count > 1 ? t('app.home.devotees') : t('app.home.devotee')}
+                      </Text>
+                    </View>
+                  ))}
+                  <Text style={styles.gateLogTotal}>
+                    {t('supervisor.westGate.gateLogTotal', { total: gateActivityLog.reduce((s, l) => s + l.count, 0) })}
+                  </Text>
+                </View>
+              )}
 
               {quota.remainingCount > 0 ? (
                 <>
@@ -1425,6 +1499,18 @@ const styles = StyleSheet.create({
   },
   modeButtonTextActive: {
     color: "#fff",
+  },
+  modeButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: COLORS.surfaceSecondary,
+  },
+  modeButtonTextDisabled: {
+    color: COLORS.textMuted,
+  },
+  modeButtonDisabledHint: {
+    fontSize: 8,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   errorCard: {
     flexDirection: "row",
@@ -2277,5 +2363,56 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#fff",
+  },
+  quotaOfflineNote: {
+    fontSize: 11,
+    color: "#92400E",
+    fontStyle: "italic",
+    marginTop: 4,
+  },
+  gateLogSection: {
+    backgroundColor: "#F0F9FF",
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#BAE6FD",
+  },
+  gateLogTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  gateLogItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  gateLogTime: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+    width: 55,
+  },
+  gateLogGate: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  gateLogCount: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  gateLogTotal: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#BAE6FD",
   },
 });

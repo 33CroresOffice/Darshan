@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Clock,
   Ticket,
+  WifiOff,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { getEntryStats, getPendingVerifications } from "@/services/entryService";
@@ -29,7 +30,7 @@ import type { GateEntry } from "@/types/database";
 import { useTranslation } from "react-i18next";
 import { useLocalizedNumber } from "@/hooks/useLocalizedNumber";
 
-const CACHE_SCOPE_STATS = "supervisor:stats";
+const CACHE_SCOPE_TODAY = "supervisor:today";
 const CACHE_SCOPE_PENDING = "supervisor:pending";
 
 export default function SupervisorDashboard() {
@@ -41,23 +42,36 @@ export default function SupervisorDashboard() {
   const [pendingEntries, setPendingEntries] = useState<GateEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
+
+  const deriveStatsFromCache = (todayEntries: GateEntry[]): EntryStats => ({
+    todayEntries: todayEntries.length,
+    todayDevotees: todayEntries.reduce(
+      (sum, e) => sum + (e.verified_devotee_count ?? e.declared_devotee_count ?? 0),
+      0
+    ),
+    pendingVerifications: todayEntries.filter((e) => e.status === "registered").length,
+  });
 
   const fetchData = useCallback(async () => {
-    // Paint cached data immediately
+    // Paint cached data immediately — derive stats from today's entries cache
+    const cachedToday = await loadCachedGateEntries(CACHE_SCOPE_TODAY);
     const cachedPending = await loadCachedGateEntries(CACHE_SCOPE_PENDING);
+
+    if (cachedToday.length > 0) {
+      setStats(deriveStatsFromCache(cachedToday));
+    }
     if (cachedPending.length > 0) {
       setPendingEntries(cachedPending.slice(0, 5));
     }
-    const cachedStatsRaw = await loadCachedGateEntries(CACHE_SCOPE_STATS);
-    if (cachedStatsRaw.length > 0) {
-      const s = (cachedStatsRaw[0] as any) as EntryStats;
-      setStats(s);
-    }
 
     if (!connectivity.isOnline()) {
+      setIsOffline(true);
       setLoading(false);
       return;
     }
+
+    setIsOffline(false);
 
     try {
       const [statsData, pending] = await Promise.all([
@@ -66,8 +80,6 @@ export default function SupervisorDashboard() {
       ]);
       setStats(statsData);
       setPendingEntries(pending.slice(0, 5));
-      // Persist for offline use
-      await cacheGateEntries(CACHE_SCOPE_STATS, [statsData as any]);
       await cacheGateEntries(CACHE_SCOPE_PENDING, pending);
     } catch (err) {
       console.error("Failed to fetch data:", err);
@@ -78,6 +90,11 @@ export default function SupervisorDashboard() {
 
   useEffect(() => {
     fetchData();
+    const unsub = connectivity.subscribe(() => {
+      setIsOffline(!connectivity.isOnline());
+      if (connectivity.isOnline()) fetchData();
+    });
+    return unsub;
   }, [fetchData]);
 
   useEffect(() => {
@@ -124,24 +141,28 @@ export default function SupervisorDashboard() {
     icon,
     onPress,
     color,
+    disabled,
+    disabledHint,
   }: {
     title: string;
     subtitle: string;
     icon: React.ReactNode;
     onPress: () => void;
     color: string;
+    disabled?: boolean;
+    disabledHint?: string;
   }) => (
     <TouchableOpacity
-      style={styles.quickAction}
-      onPress={onPress}
-      activeOpacity={0.7}
+      style={[styles.quickAction, disabled && styles.quickActionDisabled]}
+      onPress={disabled ? undefined : onPress}
+      activeOpacity={disabled ? 1 : 0.7}
     >
-      <View style={[styles.quickActionIcon, { backgroundColor: color + "20" }]}>
+      <View style={[styles.quickActionIcon, { backgroundColor: color + "20" }, disabled && styles.quickActionIconDisabled]}>
         {icon}
       </View>
       <View style={styles.quickActionText}>
-        <Text style={styles.quickActionTitle}>{title}</Text>
-        <Text style={styles.quickActionSubtitle}>{subtitle}</Text>
+        <Text style={[styles.quickActionTitle, disabled && styles.quickActionTitleDisabled]}>{title}</Text>
+        <Text style={styles.quickActionSubtitle}>{disabled && disabledHint ? disabledHint : subtitle}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -162,6 +183,13 @@ export default function SupervisorDashboard() {
 
 
         <SlotControlCard profile={profile} onSessionChange={fetchData} />
+
+        {isOffline && (
+          <View style={styles.offlineBanner}>
+            <WifiOff size={14} color="#92400E" />
+            <Text style={styles.offlineBannerText}>{t('common.offlineCachedData')}</Text>
+          </View>
+        )}
 
         <View style={styles.statsGrid}>
           <StatCard
@@ -207,9 +235,11 @@ export default function SupervisorDashboard() {
             <QuickAction
               title={t('supervisor.dashboard.createTicket')}
               subtitle={t('supervisor.dashboard.createTicketSubtitle')}
-              icon={<Ticket size={24} color={COLORS.primary} />}
+              icon={<Ticket size={24} color={isOffline ? COLORS.textMuted : COLORS.primary} />}
               onPress={() => router.push("/(supervisor)/sebayat-tickets")}
-              color={COLORS.primary}
+              color={isOffline ? COLORS.textMuted : COLORS.primary}
+              disabled={isOffline}
+              disabledHint={t('supervisor.westGate.requiresInternet')}
             />
           </View>
         </View>
@@ -393,6 +423,15 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 2,
   },
+  quickActionDisabled: {
+    opacity: 0.5,
+  },
+  quickActionIconDisabled: {
+    opacity: 0.6,
+  },
+  quickActionTitleDisabled: {
+    color: COLORS.textMuted,
+  },
   pendingList: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
@@ -438,5 +477,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textMuted,
     fontWeight: "500",
+  },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEF3C7",
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  offlineBannerText: {
+    fontSize: 13,
+    color: "#92400E",
+    fontWeight: "500",
+    flex: 1,
   },
 });

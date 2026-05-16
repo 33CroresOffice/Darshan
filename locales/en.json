@@ -19,7 +19,10 @@
     "viewAll": "View all",
     "error": "Error",
     "success": "Success",
-    "optional": "Optional"
+    "optional": "Optional",
+    "offlineSearchNote": "You are offline. Searching from locally cached data.",
+    "offlineCachedData": "Showing cached data — may not reflect latest changes.",
+    "offlineNotAvailable": "This data is not available offline."
   },
   "auth": {
     "brandName": "Darshan",
@@ -229,6 +232,7 @@
       "entryModeAlertConfirm": "Select Majana Mandapa",
       "entryModeAlertCancel": "Cancel",
       "entryModeDirectBadge": "Direct Entry",
+      "innerGateBadge": "Inner Gate",
       "dailyQuotaFull": "Daily quota completed — no more tickets can be created today",
       "offlineNoDataTitle": "Offline — No cached data",
       "offlineNoDataBody": "Connect to the internet once to enable offline mode for future sessions."
@@ -257,7 +261,8 @@
       "westGateTime": "West Gate: {{time}}",
       "innerGateTime": "Majana Mandapa: {{time}}",
       "selectFromDate": "Select From Date",
-      "selectToDate": "Select To Date"
+      "selectToDate": "Select To Date",
+      "innerGateBadge": "Inner Gate"
     },
     "notifications": {
       "title": "Notifications",
@@ -378,7 +383,11 @@
       "devoteeMinOne": "Devotee count must be at least 1",
       "onlySlotsRemaining": "Only {{count}} slots remaining for today",
       "failedAcknowledge": "Failed to acknowledge entry",
-      "failedRegister": "Failed to register entry"
+      "failedRegister": "Failed to register entry",
+      "requiresInternet": "Requires internet",
+      "offlineEstimate": "Offline estimate — will sync on reconnect",
+      "todayActivity": "Today's Gate Activity",
+      "gateLogTotal": "Total: {{total}} devotees processed today"
     },
     "innerGate": {
       "title": "Majana Mandapa Verification",
@@ -518,7 +527,9 @@
       "resetSessions": "Reset Sessions",
       "thisSlot": "this slot",
       "unknownSlot": "Unknown Slot",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "offlineNote": "You are offline. Slot session management requires internet.",
+      "offlineNoActions": "Connect to the internet to manage slot sessions."
     },
     "darshanTickets": {
       "title": "My Darshan Tickets",
@@ -526,6 +537,7 @@
       "devoteesToday": "devotees taken today",
       "slotsRemaining": "{{count}} slots remaining",
       "quotaExhausted": "Daily quota exhausted",
+      "offlineCreateDisabled": "Creating tickets on behalf of a sebayat requires an internet connection.",
       "selectSlot": "Select a Slot to Book",
       "full": "Full",
       "book": "Book",
@@ -571,10 +583,30 @@
       "entryModeAlertConfirm": "Select Majana Mandapa",
       "entryModeAlertCancel": "Cancel",
       "entryModeDirectBadge": "Direct Entry",
-      "entryModeWestGateNotAllowed": "This ticket is for Majana Mandapa direct entry. West Gate entry is not allowed."
+      "entryModeWestGateNotAllowed": "This ticket is for Majana Mandapa direct entry. West Gate entry is not allowed.",
+      "innerGateBadge": "Inner Gate"
     },
     "sebayatTickets": {
-      "title": "Create Darshan Ticket"
+      "title": "Create Darshan Ticket",
+      "searchTitle": "Search for a Sebayat",
+      "searchInfo": "Find an approved sebayat by phone number, health card ID, or temple ID, then create a darshan ticket on their behalf.",
+      "tabPhone": "Phone",
+      "tabTempleId": "Temple ID",
+      "placeholderPhone": "10-digit mobile number",
+      "placeholderTempleId": "Temple ID card number",
+      "searchBtn": "Search",
+      "notFound": "No sebayat found",
+      "notFoundPhone": "No approved sebayat matches this phone number.",
+      "notFoundTempleId": "No approved sebayat matches this temple ID.",
+      "notFoundOffline": "Not found in offline cache. Connect to internet for a full search.",
+      "notFoundOfflineNoCache": "Offline data not available. Please connect to the internet at least once to sync sebayat data.",
+      "offlineCacheCount": "({{count}} sebayats cached)",
+      "offlineNoCacheWarning": "No offline data available. Connect to internet first so sebayat data can be downloaded for offline use.",
+      "searchFailed": "Search failed. Please try again.",
+      "creatingFor": "Creating ticket for:",
+      "innerGateBadge": "Inner Gate",
+      "offlineDisabledTitle": "Unavailable Offline",
+      "offlineDisabledBody": "Creating tickets on behalf of a sebayat requires an internet connection. Offline mode has been disabled by the administrator."
     },
     "slotLogs": {
       "title": "Slot Session Logs",
@@ -1374,6 +1406,7 @@
     "featureDisabled": "Gumasta feature is not enabled for your account",
     "nameRequired": "Name is required",
     "contactRequired": "Contact number is required",
+    "contactInvalid": "Contact number must be exactly 10 digits",
     "photoRequired": "Photo is required",
     "aadharRequired": "Aadhaar card is required",
     "approval": {

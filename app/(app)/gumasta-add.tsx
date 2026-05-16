@@ -20,6 +20,23 @@ import { Input } from "@/components/forms/Input";
 import { Button } from "@/components/actions/Button";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 
+async function pickImage(options: ExpoImagePicker.ImagePickerOptions): Promise<string | null> {
+  const result = await ExpoImagePicker.launchImageLibraryAsync({
+    ...options,
+    // On web, allowsEditing with aspect ratio is broken — disable it
+    allowsEditing: Platform.OS !== "web" && options.allowsEditing,
+    base64: Platform.OS === "web",
+  });
+  if (result.canceled || !result.assets?.[0]) return null;
+  const asset = result.assets[0];
+  // On web the picker returns base64 — reconstruct a data URI so we can upload it
+  if (Platform.OS === "web" && asset.base64) {
+    const mime = asset.mimeType || "image/jpeg";
+    return `data:${mime};base64,${asset.base64}`;
+  }
+  return asset.uri;
+}
+
 export default function GumastaAddScreen() {
   const router = useRouter();
   const { t } = useTranslation();
@@ -33,32 +50,32 @@ export default function GumastaAddScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const pickPhoto = async () => {
-    const result = await ExpoImagePicker.launchImageLibraryAsync({
+    const uri = await pickImage({
       mediaTypes: ExpoImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
-    if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-    }
+    if (uri) setPhotoUri(uri);
   };
 
   const pickAadhar = async () => {
-    const result = await ExpoImagePicker.launchImageLibraryAsync({
+    const uri = await pickImage({
       mediaTypes: ExpoImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
       quality: 0.8,
     });
-    if (!result.canceled && result.assets[0]) {
-      setAadharUri(result.assets[0].uri);
-    }
+    if (uri) setAadharUri(uri);
   };
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = t("gumasta.nameRequired");
-    if (!contactNumber.trim()) newErrors.contactNumber = t("gumasta.contactRequired");
+    if (!contactNumber.trim()) {
+      newErrors.contactNumber = t("gumasta.contactRequired");
+    } else if (!/^\d{10}$/.test(contactNumber.trim())) {
+      newErrors.contactNumber = t("gumasta.contactInvalid");
+    }
     if (!photoUri) newErrors.photo = t("gumasta.photoRequired");
     if (!aadharUri) newErrors.aadhar = t("gumasta.aadharRequired");
     setErrors(newErrors);
@@ -139,8 +156,9 @@ export default function GumastaAddScreen() {
             label={t("gumasta.contactNumber")}
             placeholder={t("gumasta.contactPlaceholder")}
             value={contactNumber}
-            onChangeText={setContactNumber}
+            onChangeText={(v) => setContactNumber(v.replace(/\D/g, "").slice(0, 10))}
             keyboardType="phone-pad"
+            maxLength={10}
             error={errors.contactNumber}
           />
 

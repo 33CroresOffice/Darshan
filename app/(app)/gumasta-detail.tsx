@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Image,
   Modal,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -25,6 +24,10 @@ import {
   Calendar,
   Users,
   Camera,
+  IdCard,
+  Upload,
+  X,
+  ZoomIn,
 } from "lucide-react-native";
 import * as ExpoImagePicker from "expo-image-picker";
 import { useTranslation } from "react-i18next";
@@ -36,11 +39,27 @@ import {
   deleteGumasta,
   getTicketsByGumasta,
   uploadGumastaPhoto,
+  uploadGumastaAadhar,
 } from "@/services/gumastaService";
 import { Input } from "@/components/forms/Input";
 import { Button } from "@/components/actions/Button";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { Gumasta, GateEntry } from "@/types/database";
+
+async function pickImageFromLibrary(options: ExpoImagePicker.ImagePickerOptions): Promise<string | null> {
+  const result = await ExpoImagePicker.launchImageLibraryAsync({
+    ...options,
+    allowsEditing: Platform.OS !== "web" && options.allowsEditing,
+    base64: Platform.OS === "web",
+  });
+  if (result.canceled || !result.assets?.[0]) return null;
+  const asset = result.assets[0];
+  if (Platform.OS === "web" && asset.base64) {
+    const mime = asset.mimeType || "image/jpeg";
+    return `data:${mime};base64,${asset.base64}`;
+  }
+  return asset.uri;
+}
 
 export default function GumastaDetailScreen() {
   const router = useRouter();
@@ -54,10 +73,12 @@ export default function GumastaDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [error, setError] = useState("");
+  const [imagePreviewUri, setImagePreviewUri] = useState<string | null>(null);
 
   const [editName, setEditName] = useState("");
   const [editContact, setEditContact] = useState("");
   const [editPhotoUri, setEditPhotoUri] = useState<string | null>(null);
+  const [editAadharUri, setEditAadharUri] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -104,16 +125,23 @@ export default function GumastaDetailScreen() {
     }
   };
 
-  const pickImage = async () => {
-    const result = await ExpoImagePicker.launchImageLibraryAsync({
+  const pickPhoto = async () => {
+    const uri = await pickImageFromLibrary({
       mediaTypes: ExpoImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
-    if (!result.canceled && result.assets[0]) {
-      setEditPhotoUri(result.assets[0].uri);
-    }
+    if (uri) setEditPhotoUri(uri);
+  };
+
+  const pickAadhar = async () => {
+    const uri = await pickImageFromLibrary({
+      mediaTypes: ExpoImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (uri) setEditAadharUri(uri);
   };
 
   const handleSaveEdit = async () => {
@@ -122,23 +150,39 @@ export default function GumastaDetailScreen() {
     setSaving(true);
     setError("");
     try {
-      let photoUrl = gumasta.photo_url;
-      if (editPhotoUri) {
-        photoUrl = await uploadGumastaPhoto(registration.id, gumasta.id, editPhotoUri);
-      }
-      const updated = await updateGumasta(gumasta.id, {
+      const updates: { name: string; contact_number: string; photo_url?: string; aadhar_card_url?: string } = {
         name: editName.trim(),
         contact_number: editContact.trim(),
-        photo_url: photoUrl,
-      });
+      };
+
+      if (editPhotoUri) {
+        updates.photo_url = await uploadGumastaPhoto(registration.id, gumasta.id, editPhotoUri);
+      }
+      if (editAadharUri) {
+        updates.aadhar_card_url = await uploadGumastaAadhar(registration.id, gumasta.id, editAadharUri);
+      }
+
+      const updated = await updateGumasta(gumasta.id, updates);
       setGumasta(updated);
       setEditing(false);
       setEditPhotoUri(null);
+      setEditAadharUri(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    if (gumasta) {
+      setEditName(gumasta.name);
+      setEditContact(gumasta.contact_number);
+    }
+    setEditPhotoUri(null);
+    setEditAadharUri(null);
+    setError("");
   };
 
   if (loading || !gumasta) {
@@ -157,6 +201,8 @@ export default function GumastaDetailScreen() {
       </SafeAreaView>
     );
   }
+
+  const currentAadharUri = editAadharUri || (editing ? gumasta.aadhar_card_url : null);
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -183,7 +229,8 @@ export default function GumastaDetailScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           {editing ? (
             <>
-              <TouchableOpacity style={styles.editPhoto} onPress={pickImage}>
+              {/* Photo picker */}
+              <TouchableOpacity style={styles.editPhoto} onPress={pickPhoto}>
                 {editPhotoUri || gumasta.photo_url ? (
                   <Image
                     source={{ uri: editPhotoUri || gumasta.photo_url! }}
@@ -205,21 +252,48 @@ export default function GumastaDetailScreen() {
               <Input
                 label={t("gumasta.contactNumber")}
                 value={editContact}
-                onChangeText={setEditContact}
+                onChangeText={(v) => setEditContact(v.replace(/\D/g, "").slice(0, 10))}
                 keyboardType="phone-pad"
+                maxLength={10}
               />
+
+              {/* Aadhaar card edit */}
+              <View style={styles.aadharSection}>
+                <View style={styles.aadharHeader}>
+                  <IdCard size={16} color={COLORS.textSecondary} />
+                  <Text style={styles.aadharLabel}>{t("gumasta.aadharCard")}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.aadharPicker, currentAadharUri ? styles.aadharPickerFilled : undefined]}
+                  onPress={pickAadhar}
+                  activeOpacity={0.8}
+                >
+                  {currentAadharUri ? (
+                    <View style={styles.aadharPreviewRow}>
+                      <Image source={{ uri: currentAadharUri }} style={styles.aadharPreview} />
+                      <View style={styles.aadharPreviewInfo}>
+                        <Text style={styles.aadharUploadedText}>{t("gumasta.aadharUploaded")}</Text>
+                        <Text style={styles.aadharChangeText}>{t("gumasta.tapToChange")}</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.aadharEmpty}>
+                      <View style={styles.aadharIconBg}>
+                        <Upload size={20} color={COLORS.primary} />
+                      </View>
+                      <Text style={styles.aadharEmptyTitle}>{t("gumasta.uploadAadhar")}</Text>
+                      <Text style={styles.aadharEmptySubtitle}>{t("gumasta.uploadAadharHint")}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <View style={styles.editActions}>
                 <Button
                   title={t("common.cancel")}
-                  onPress={() => {
-                    setEditing(false);
-                    setEditName(gumasta.name);
-                    setEditContact(gumasta.contact_number);
-                    setEditPhotoUri(null);
-                  }}
+                  onPress={cancelEdit}
                   variant="outline"
                   style={{ flex: 1, marginRight: SPACING.sm }}
                 />
@@ -233,9 +307,12 @@ export default function GumastaDetailScreen() {
             </>
           ) : (
             <>
+              {/* View mode */}
               <View style={styles.profileSection}>
                 {gumasta.photo_url ? (
-                  <Image source={{ uri: gumasta.photo_url }} style={styles.avatarLarge} />
+                  <TouchableOpacity onPress={() => setImagePreviewUri(gumasta.photo_url)}>
+                    <Image source={{ uri: gumasta.photo_url }} style={styles.avatarLarge} />
+                  </TouchableOpacity>
                 ) : (
                   <View style={styles.avatarPlaceholderLarge}>
                     <User size={36} color={COLORS.textMuted} />
@@ -265,6 +342,32 @@ export default function GumastaDetailScreen() {
                     {gumasta.is_active ? t("gumasta.active") : t("gumasta.inactive")}
                   </Text>
                 </View>
+              </View>
+
+              {/* Aadhaar card view */}
+              <View style={styles.aadharViewSection}>
+                <View style={styles.aadharHeader}>
+                  <IdCard size={16} color={COLORS.textSecondary} />
+                  <Text style={styles.aadharLabel}>{t("gumasta.aadharCard")}</Text>
+                </View>
+                {gumasta.aadhar_card_url ? (
+                  <TouchableOpacity
+                    style={styles.aadharImageCard}
+                    onPress={() => setImagePreviewUri(gumasta.aadhar_card_url)}
+                    activeOpacity={0.85}
+                  >
+                    <Image source={{ uri: gumasta.aadhar_card_url }} style={styles.aadharImage} resizeMode="cover" />
+                    <View style={styles.aadharImageOverlay}>
+                      <ZoomIn size={16} color="#fff" />
+                      <Text style={styles.aadharImageOverlayText}>Tap to view</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.aadharMissing}>
+                    <IdCard size={22} color={COLORS.textMuted} />
+                    <Text style={styles.aadharMissingText}>No Aadhaar card uploaded</Text>
+                  </View>
+                )}
               </View>
 
               <View style={styles.actionRow}>
@@ -333,6 +436,7 @@ export default function GumastaDetailScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Delete confirm modal */}
       <Modal
         visible={deleteModalVisible}
         transparent
@@ -357,6 +461,27 @@ export default function GumastaDetailScreen() {
               />
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Full-screen image preview */}
+      <Modal
+        visible={!!imagePreviewUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImagePreviewUri(null)}
+      >
+        <View style={styles.previewOverlay}>
+          <TouchableOpacity style={styles.previewClose} onPress={() => setImagePreviewUri(null)}>
+            <X size={24} color="#fff" />
+          </TouchableOpacity>
+          {imagePreviewUri && (
+            <Image
+              source={{ uri: imagePreviewUri }}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -443,6 +568,51 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: "600",
+  },
+  aadharViewSection: {
+    marginBottom: SPACING.lg,
+  },
+  aadharImageCard: {
+    borderRadius: RADIUS.md,
+    overflow: "hidden",
+    backgroundColor: COLORS.surfaceSecondary,
+    ...SHADOWS.small,
+  },
+  aadharImage: {
+    width: "100%",
+    height: 160,
+  },
+  aadharImageOverlay: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderTopLeftRadius: RADIUS.sm,
+  },
+  aadharImageOverlayText: {
+    fontSize: 11,
+    color: "#fff",
+    fontWeight: "500",
+  },
+  aadharMissing: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    padding: SPACING.md,
+    backgroundColor: COLORS.surfaceSecondary,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: "dashed",
+  },
+  aadharMissingText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
   },
   actionRow: {
     flexDirection: "row",
@@ -536,6 +706,81 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginTop: 6,
   },
+  aadharSection: {
+    marginTop: SPACING.md,
+  },
+  aadharHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  aadharLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  aadharPicker: {
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: "dashed",
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceSecondary,
+    overflow: "hidden",
+  },
+  aadharPickerFilled: {
+    borderStyle: "solid",
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  aadharEmpty: {
+    alignItems: "center",
+    padding: SPACING.xl,
+    gap: SPACING.sm,
+  },
+  aadharIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  aadharEmptyTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  aadharEmptySubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+  },
+  aadharPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: SPACING.md,
+    gap: SPACING.md,
+  },
+  aadharPreview: {
+    width: 72,
+    height: 48,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.border,
+  },
+  aadharPreviewInfo: {
+    flex: 1,
+  },
+  aadharUploadedText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+  aadharChangeText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
   editActions: {
     flexDirection: "row",
     marginTop: SPACING.lg,
@@ -567,5 +812,27 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: "row",
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  previewClose: {
+    position: "absolute",
+    top: 48,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  previewImage: {
+    width: "100%",
+    height: "80%",
   },
 });

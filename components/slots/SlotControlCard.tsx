@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Play, Square, ChevronRight, ChevronDown, Radio, TriangleAlert as AlertTriangle, X, RotateCcw } from "lucide-react-native";
+import { Play, Square, ChevronRight, ChevronDown, Radio, TriangleAlert as AlertTriangle, X, RotateCcw, WifiOff } from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import {
   getActiveSession,
@@ -18,6 +18,7 @@ import {
 } from "@/services/slotSessionService";
 import { getActiveSlots as fetchActiveSlots } from "@/services/slotService";
 import { getDarshanSlotsEnabled } from "@/services/settingsService";
+import { connectivity, loadActiveSlotSession } from "@/lib/offline";
 import { COLORS, SHADOWS } from "@/constants/config";
 import { useTranslation } from "react-i18next";
 import { useSlotName } from "@/hooks/useSlotName";
@@ -49,10 +50,24 @@ export function SlotControlCard({ profile, onSessionChange, logsRoute }: SlotCon
 
   const isAdmin = profile?.role === "superadmin" || profile?.role === "admin";
   const [collapsed, setCollapsed] = useState(true);
+  const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
 
   const [slotsFeatureEnabled, setSlotsFeatureEnabled] = useState(true);
 
   const fetchData = useCallback(async () => {
+    const offline = !connectivity.isOnline();
+    setIsOffline(offline);
+
+    if (offline) {
+      // Show cached session info when offline — actions are disabled
+      const cached = await loadActiveSlotSession();
+      if (cached) {
+        setActiveSession({ id: cached.id, slot_id: cached.slot_id, status: cached.status, started_at: cached.started_at } as SlotSession);
+      }
+      setLoading(false);
+      return;
+    }
+
     const [enabled, session, slots, allSessions] = await Promise.all([
       getDarshanSlotsEnabled(),
       getActiveSession(),
@@ -78,6 +93,13 @@ export function SlotControlCard({ profile, onSessionChange, logsRoute }: SlotCon
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    return connectivity.subscribe(() => {
+      setIsOffline(!connectivity.isOnline());
+      fetchData();
+    });
   }, [fetchData]);
 
   useEffect(() => {
@@ -213,7 +235,7 @@ export function SlotControlCard({ profile, onSessionChange, logsRoute }: SlotCon
   return (
     <View style={styles.card}>
       <TouchableOpacity
-        style={[styles.cardHeader, !collapsed && { marginBottom: 16 }]}
+        style={[styles.cardHeader, !collapsed && { marginBottom: isOffline ? 8 : 16 }]}
         onPress={() => setCollapsed((c) => !c)}
         activeOpacity={0.7}
       >
@@ -243,6 +265,13 @@ export function SlotControlCard({ profile, onSessionChange, logsRoute }: SlotCon
         />
       </TouchableOpacity>
 
+      {!collapsed && isOffline && (
+        <View style={styles.offlineBanner}>
+          <WifiOff size={14} color="#92400E" />
+          <Text style={styles.offlineBannerText}>{t("supervisor.slotControl.offlineNote")}</Text>
+        </View>
+      )}
+
       {!collapsed && activeSession ? (
         <View style={styles.activeSessionContainer}>
           <View style={styles.activeBanner}>
@@ -259,18 +288,20 @@ export function SlotControlCard({ profile, onSessionChange, logsRoute }: SlotCon
             })}
           </Text>
           <TouchableOpacity
-            style={styles.endButton}
-            onPress={() => setConfirmState({ type: "end" })}
-            activeOpacity={0.8}
+            style={[styles.endButton, isOffline && styles.buttonOfflineDisabled]}
+            onPress={() => !isOffline && setConfirmState({ type: "end" })}
+            activeOpacity={isOffline ? 1 : 0.8}
           >
-            <Square size={16} color="#fff" />
-            <Text style={styles.endButtonText}>{t("supervisor.slotControl.endSlot")}</Text>
+            <Square size={16} color={isOffline ? COLORS.textMuted : "#fff"} />
+            <Text style={[styles.endButtonText, isOffline && { color: COLORS.textMuted }]}>{t("supervisor.slotControl.endSlot")}</Text>
           </TouchableOpacity>
         </View>
       ) : !collapsed ? (
         <View style={styles.noSessionContainer}>
-          {availableSlots.length === 0 && endedSessions.length === 0 ? (
+          {availableSlots.length === 0 && endedSessions.length === 0 && !isOffline ? (
             <Text style={styles.noSlotsText}>{t("supervisor.slotControl.noSlotsConfigured")}</Text>
+          ) : isOffline ? (
+            <Text style={styles.noSlotsText}>{t("supervisor.slotControl.offlineNoActions")}</Text>
           ) : (
             <>
               {availableSlots.length > 0 && (
@@ -339,6 +370,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOWS.small,
+  },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+  },
+  offlineBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#92400E",
+  },
+  buttonOfflineDisabled: {
+    backgroundColor: COLORS.border,
+    opacity: 0.7,
   },
   cardHeader: {
     flexDirection: "row",

@@ -9,23 +9,35 @@ import {
   generateUUID,
   getCachedTickets,
   getDeviceId,
+  getOutbox,
   loadServerQuota,
   saveServerQuota,
   setCachedTickets,
   todayString,
   upsertCachedTicket,
+  upsertStaffCachedTicket,
+  loadSebayatListCache,
+  searchSebayatListCache,
+  upsertCachedGateEntry,
+  deductLocalQuota,
+  appendGateLog,
+  getGateLog,
 } from "@/lib/offline";
 import {
   createDarshanTicket,
+  createDarshanTicketForStaff,
   cancelDarshanTicket,
   getSebayatDailyQuota,
   getSebayatTodayTickets,
   updateDarshanTicketCount,
   isTicketExpired as isExpired,
+  searchSebayatByPhone,
+  searchSebayatByTempleId,
+  flagEntryDiscrepancy,
 } from "./entryService";
 import { getTicketValidityMinutes, getOfflineModeEnabled } from "./settingsService";
-import type { GateEntry, EntryMode, SebayatQuota } from "@/types/database";
-import type { CreateEntryResult } from "@/types";
+import type { GateEntry, EntryMode, SebayatQuota, SebayatRegistration } from "@/types/database";
+import type { CreateEntryResult, VerifyEntryResult } from "@/types";
 
 // Compute effective remaining, merging server state with any unsynced local tickets.
 // Always attempts a live server fetch regardless of connectivity flag (the flag can
@@ -39,10 +51,19 @@ export async function getEffectiveQuota(sebayatId: string): Promise<SebayatQuota
     const q = await getSebayatDailyQuota(sebayatId, date);
     // Persist immediately so the offline ledger is always fresh
     await saveServerQuota(sebayatId, date, q);
-    // Add any local-only tickets not yet acknowledged by the server
-    const local = await getCachedTickets(sebayatId, date);
+    // Only add local tickets that are STILL pending in the outbox (not yet
+    // flushed to the server). Flushed tickets are already counted in q.usedCount.
+    const [local, outbox] = await Promise.all([getCachedTickets(sebayatId, date), getOutbox()]);
+    const pendingCreateKeys = new Set(
+      outbox.filter((o) => o.op === "ticket.create").map((o) => o.payload.idempotencyKey as string)
+    );
     const localPending = local
-      .filter((t) => t.status !== "cancelled" && t.id.startsWith("local_"))
+      .filter(
+        (t) =>
+          t.status !== "cancelled" &&
+          t.id.startsWith("local_") &&
+          pendingCreateKeys.has((t.qr_code_data as Record<string, unknown> | null)?.idempotencyKey as string)
+      )
       .reduce((sum, t) => sum + t.declared_devotee_count, 0);
     const used = q.usedCount + localPending;
     const remaining = Math.max(0, q.maxLimit - used);
@@ -55,10 +76,20 @@ export async function getEffectiveQuota(sebayatId: string): Promise<SebayatQuota
 
   // Offline path: derive quota from the persisted ledger + local tickets.
   const ledger = await loadServerQuota(sebayatId, date);
-  const local = await getCachedTickets(sebayatId, date);
+  const [local, outbox] = await Promise.all([getCachedTickets(sebayatId, date), getOutbox()]);
 
+  // Only count local_ tickets still pending in outbox — flushed ones are already
+  // counted in the ledger's serverUsed (saved from the last successful server fetch).
+  const pendingCreateKeys = new Set(
+    outbox.filter((o) => o.op === "ticket.create").map((o) => o.payload.idempotencyKey as string)
+  );
   const localPending = local
-    .filter((t) => t.status !== "cancelled" && t.id.startsWith("local_"))
+    .filter(
+      (t) =>
+        t.status !== "cancelled" &&
+        t.id.startsWith("local_") &&
+        pendingCreateKeys.has((t.qr_code_data as Record<string, unknown> | null)?.idempotencyKey as string)
+    )
     .reduce((sum, t) => sum + t.declared_devotee_count, 0);
 
   // Use the real limit from the ledger. Falls back to 20 (system default)
@@ -332,6 +363,8 @@ export async function recordWestGateEventResilient(args: {
   idempotencyKey: string;
   supervisorId: string;
   actualCount: number;
+  sebayatId?: string;
+  entryCode?: string;
 }): Promise<{ success: boolean; message: string; offline: boolean }> {
   const deviceId = await getDeviceId();
   const capturedAt = new Date().toISOString();
@@ -345,7 +378,6 @@ export async function recordWestGateEventResilient(args: {
       p_device_id: deviceId,
     });
     if (!error) return { success: true, message: "West gate verified", offline: false };
-    // If ticket not synced yet, fall through to enqueue
   }
 
   let offlineModeWest = true;
@@ -367,6 +399,17 @@ export async function recordWestGateEventResilient(args: {
     capturedAt,
     deviceId,
   });
+
+  if (args.sebayatId) {
+    await deductLocalQuota(args.sebayatId, args.actualCount);
+    await appendGateLog(args.sebayatId, {
+      timestamp: capturedAt,
+      count: args.actualCount,
+      gate: "west",
+      entryCode: args.entryCode ?? "",
+    });
+  }
+
   return { success: true, message: "Captured offline. Will sync.", offline: true };
 }
 
@@ -375,6 +418,8 @@ export async function recordInnerGateEventResilient(args: {
   supervisorId: string;
   verifiedCount: number;
   reason?: string;
+  sebayatId?: string;
+  entryCode?: string;
 }): Promise<{ success: boolean; message: string; offline: boolean }> {
   const deviceId = await getDeviceId();
   const capturedAt = new Date().toISOString();
@@ -411,7 +456,359 @@ export async function recordInnerGateEventResilient(args: {
     capturedAt,
     deviceId,
   });
+
+  if (args.sebayatId) {
+    await deductLocalQuota(args.sebayatId, args.verifiedCount);
+    await appendGateLog(args.sebayatId, {
+      timestamp: capturedAt,
+      count: args.verifiedCount,
+      gate: "inner",
+      entryCode: args.entryCode ?? "",
+    });
+  }
+
   return { success: true, message: "Captured offline. Will sync.", offline: true };
 }
 
-export { flushOutbox, isExpired };
+// Resilient sebayat search: online delegates to server, offline searches local cache.
+// Returns a SebayatRegistration-shaped object (may lack full join data when offline).
+export async function searchSebayatResilient(
+  query: string,
+  mode: "phone" | "templeid"
+): Promise<SebayatRegistration | null> {
+  if (connectivity.isOnline()) {
+    try {
+      const result =
+        mode === "phone"
+          ? await searchSebayatByPhone(query)
+          : await searchSebayatByTempleId(query);
+      return result;
+    } catch {}
+  }
+
+  // Offline: search the locally cached sebayat list
+  const list = await loadSebayatListCache();
+  const found = searchSebayatListCache(list, query, mode);
+  if (!found) return null;
+
+  // Shape the cached data to match SebayatRegistration
+  return {
+    id: found.id,
+    full_name: found.full_name,
+    phone_number: found.phone_number,
+    temple_health_card_id: found.temple_health_card_id,
+    temple_id_card_number: found.temple_id_card_number,
+    allotment_number: found.allotment_number,
+    photo_url: found.photo_url,
+    approval_status: found.approval_status as "approved",
+    category: found.category_name ? { name: found.category_name } : null,
+    // Fields not stored in cache — set to safe defaults
+    user_id: "",
+    email: null,
+    address: null,
+    city: null,
+    state: null,
+    pincode: null,
+    date_of_birth: null,
+    aadhar_number: null,
+    temple_affiliation: null,
+    experience_years: null,
+    id_proof_url: null,
+    rejection_reason: null,
+    approved_by: null,
+    approved_at: null,
+    submission_count: 1,
+    created_at: "",
+    updated_at: "",
+    category_id: null,
+    temple_health_card_url: null,
+    temple_id_card_url: null,
+    submission_round: 1,
+    old_data: null,
+    rejection_type: null,
+    father_name: null,
+    aadhar_card_url: null,
+    permanent_address: null,
+    permanent_city: null,
+    permanent_state: null,
+    permanent_pincode: null,
+    present_same_as_permanent: false,
+    present_address: null,
+    present_city: null,
+    present_state: null,
+    present_pincode: null,
+    age: null,
+    category_ids: null,
+  } as unknown as SebayatRegistration;
+}
+
+// Resilient discrepancy flag: queues the flag for offline sync.
+export async function flagEntryDiscrepancyResilient(
+  entryId: string,
+  reason: string,
+  supervisorId: string
+): Promise<VerifyEntryResult> {
+  const capturedAt = new Date().toISOString();
+
+  if (connectivity.isOnline() && !entryId.startsWith("local_")) {
+    try {
+      return await flagEntryDiscrepancy(entryId, reason, supervisorId);
+    } catch {}
+  }
+
+  if (entryId.startsWith("local_")) {
+    return {
+      success: false,
+      message: "Cannot flag an offline-created entry. Please wait for it to sync first.",
+    };
+  }
+
+  let offlineModeEnabled = true;
+  try {
+    offlineModeEnabled = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeEnabled) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator.",
+    };
+  }
+
+  // Optimistically update the local caches
+  const optimisticUpdate = (entry: GateEntry): GateEntry => ({
+    ...entry,
+    status: "discrepancy_flagged",
+    inner_gate_supervisor_id: supervisorId,
+    inner_gate_verification_time: capturedAt,
+    notes: reason,
+  });
+
+  for (const scope of ["inner_gate:pending", "supervisor:today", "supervisor:pending"]) {
+    try {
+      const entries = await import("@/lib/offline").then((m) =>
+        m.loadCachedGateEntries(scope)
+      );
+      const entry = entries.find((e) => e.id === entryId);
+      if (entry) {
+        await upsertCachedGateEntry(scope, optimisticUpdate(entry));
+      }
+    } catch {}
+  }
+
+  await enqueue("gate.flag_discrepancy", {
+    entryId,
+    reason,
+    supervisorId,
+    capturedAt,
+  });
+
+  return {
+    success: true,
+    message: "Discrepancy flagged offline. Will sync when connection returns.",
+  };
+}
+
+// Resilient staff ticket creation: supervisor creates a ticket on behalf of a sebayat.
+// Online: calls createDarshanTicketForStaff() directly.
+// Offline: mints a local ticket, saves it to the staff ticket cache, and queues
+//          a ticket.staff_create op (which reconciles via the same RPC as ticket.create).
+export async function createTicketForStaffResilient(
+  sebayatRegistrationId: string,
+  staffUserId: string,
+  devoteeCount: number,
+  slotId: string | null | undefined,
+  entryMode: EntryMode
+): Promise<CreateEntryResult> {
+  const date = todayString();
+
+  if (connectivity.isOnline()) {
+    // Build a direct call that uses the sebayatRegistrationId we already have
+    const result = await createDarshanTicket(sebayatRegistrationId, devoteeCount, slotId ?? null, entryMode);
+    if (result.success && result.entry) {
+      await upsertStaffCachedTicket(date, result.entry);
+    }
+    return result;
+  }
+
+  let offlineModeEnabled = true;
+  try {
+    offlineModeEnabled = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeEnabled) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator. Please connect to the internet and try again.",
+    };
+  }
+
+  const idempotencyKey = buildIdempotencyKey("stk");
+  const entryCode = generateEntryCode();
+  const deviceId = await getDeviceId();
+  const clientCreatedAt = new Date().toISOString();
+  let validityMinutes = 240;
+  try {
+    validityMinutes = await getTicketValidityMinutes();
+  } catch {}
+  const expiresAt = new Date(Date.now() + validityMinutes * 60 * 1000).toISOString();
+
+  const qrCodeData = {
+    entryCode,
+    sebayatId: sebayatRegistrationId,
+    date,
+    count: devoteeCount,
+    slotId: slotId || null,
+    timestamp: clientCreatedAt,
+    idempotencyKey,
+    offline: true,
+    staffCreated: true,
+    staffUserId,
+    deviceId,
+  };
+
+  const localTicket = buildLocalTicket({
+    idempotencyKey: `local_${idempotencyKey}`,
+    entryCode,
+    sebayatId: sebayatRegistrationId,
+    slotId: slotId || null,
+    declaredCount: devoteeCount,
+    entryDate: date,
+    entryMode,
+    expiresAt,
+    clientCreatedAt,
+    deviceId,
+    qrCodeData,
+  });
+
+  await upsertStaffCachedTicket(date, localTicket);
+  // Also cache into the sebayat's ticket cache so it shows in the main ticket view
+  await upsertCachedTicket(sebayatRegistrationId, date, localTicket);
+
+  await enqueue("ticket.staff_create", {
+    idempotencyKey,
+    entryCode,
+    qrCodeData,
+    sebayatId: sebayatRegistrationId,
+    staffUserId,
+    slotId: slotId || null,
+    declaredCount: devoteeCount,
+    entryDate: date,
+    entryMode,
+    expiresAt,
+    clientCreatedAt,
+    deviceId,
+  });
+
+  return {
+    success: true,
+    message: "Ticket created offline. It will sync automatically when connection returns.",
+    entry: localTicket,
+  };
+}
+
+// Resilient west gate entry registration: supervisor manually creates a gate entry
+// for a sebayat looked up by phone when no pre-existing ticket exists.
+export async function registerWestGateEntryResilient(
+  sebayatId: string,
+  devoteeCount: number,
+  supervisorId: string
+): Promise<CreateEntryResult> {
+  const date = todayString();
+
+  if (connectivity.isOnline()) {
+    const { registerWestGateEntry } = await import("./entryService");
+    const result = await registerWestGateEntry(sebayatId, devoteeCount, supervisorId);
+    if (result.success && result.entry) {
+      await upsertCachedGateEntry("supervisor:today", result.entry);
+      try {
+        const q = await getSebayatDailyQuota(sebayatId, date);
+        await saveServerQuota(sebayatId, date, q);
+      } catch {}
+    }
+    return result;
+  }
+
+  let offlineModeEnabled = true;
+  try {
+    offlineModeEnabled = await getOfflineModeEnabled();
+  } catch {}
+  if (!offlineModeEnabled) {
+    return {
+      success: false,
+      message: "No internet connection. Offline mode has been disabled by the administrator.",
+    };
+  }
+
+  const quota = await getEffectiveQuota(sebayatId);
+  if (devoteeCount > quota.remainingCount) {
+    return {
+      success: false,
+      message: `Cannot register ${devoteeCount} devotees. Only ${quota.remainingCount} slots remaining.`,
+    };
+  }
+
+  const idempotencyKey = buildIdempotencyKey("wg");
+  const entryCode = generateEntryCode();
+  const deviceId = await getDeviceId();
+  const clientCreatedAt = new Date().toISOString();
+
+  const qrCodeData = {
+    entryCode,
+    sebayatId,
+    date,
+    count: devoteeCount,
+    timestamp: clientCreatedAt,
+    idempotencyKey,
+    offline: true,
+    deviceId,
+  };
+
+  const localEntry = buildLocalTicket({
+    idempotencyKey: `local_${idempotencyKey}`,
+    entryCode,
+    sebayatId,
+    slotId: null,
+    declaredCount: devoteeCount,
+    entryDate: date,
+    entryMode: "west_gate" as EntryMode,
+    expiresAt: null,
+    clientCreatedAt,
+    deviceId,
+    qrCodeData,
+  });
+  // Mark as registered (supervisor-created entries skip "pending")
+  (localEntry as any).status = "registered";
+  (localEntry as any).west_gate_supervisor_id = supervisorId;
+  (localEntry as any).west_gate_entry_time = clientCreatedAt;
+
+  await upsertCachedGateEntry("supervisor:today", localEntry);
+  await deductLocalQuota(sebayatId, devoteeCount);
+  await appendGateLog(sebayatId, {
+    timestamp: clientCreatedAt,
+    count: devoteeCount,
+    gate: "west",
+    entryCode,
+  });
+
+  await enqueue("gate.west_register", {
+    idempotencyKey,
+    entryCode,
+    qrCodeData,
+    sebayatId,
+    slotId: null,
+    declaredCount: devoteeCount,
+    entryDate: date,
+    entryMode: "west_gate",
+    expiresAt: null,
+    clientCreatedAt,
+    deviceId,
+    supervisorId,
+  });
+
+  return {
+    success: true,
+    message: "Entry registered offline. Will sync when connection returns.",
+    entry: localEntry,
+  };
+}
+
+export { flushOutbox, isExpired, getGateLog };

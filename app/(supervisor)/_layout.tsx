@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from "expo-router";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { LayoutDashboard, DoorOpen, ScanLine, History, Bell, Ticket, CircleUser as UserCircle, MessageSquare } from "lucide-react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
+import { LayoutDashboard, DoorOpen, ScanLine, History, Bell, Ticket, CircleUser as UserCircle, MessageSquare, RefreshCw, CircleCheck as CheckCircle, WifiOff } from "lucide-react-native";
 import { COLORS, RADIUS, SPACING } from "@/constants/config";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
@@ -9,14 +9,25 @@ import { useState } from "react";
 import { FeedbackModal } from "@/components/feedback/FeedbackModal";
 import { useTranslation } from "react-i18next";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
+import { useSupervisorSync } from "@/hooks/useSupervisorSync";
+import { connectivity } from "@/lib/offline";
 
-function GlobalHeader() {
+function GlobalHeader({ sync }: { sync: ReturnType<typeof useSupervisorSync> }) {
   const router = useRouter();
   const { profile, hasApprovedRegistration } = useAuth();
   const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const { t } = useTranslation();
+  const isOffline = !connectivity.isOnline();
+
+  const syncLabel = sync.syncing
+    ? `Syncing…`
+    : sync.sebayatCount > 0
+    ? `${sync.sebayatCount} cached`
+    : isOffline
+    ? "No cache"
+    : "Tap to sync";
 
   return (
     <>
@@ -31,7 +42,28 @@ function GlobalHeader() {
             <Text style={styles.profileName} numberOfLines={1}>
               {profile?.full_name || "Welcome"}
             </Text>
-            <Text style={styles.profileRole}>{t('supervisor.role')}</Text>
+            <TouchableOpacity
+              style={styles.syncRow}
+              onPress={() => { if (!isOffline && !sync.syncing) sync.triggerSync(); }}
+              activeOpacity={isOffline || sync.syncing ? 1 : 0.7}
+            >
+              {sync.syncing ? (
+                <ActivityIndicator size={10} color={COLORS.primary} />
+              ) : isOffline ? (
+                <WifiOff size={10} color={COLORS.error} />
+              ) : sync.sebayatCount > 0 ? (
+                <CheckCircle size={10} color={COLORS.success} />
+              ) : (
+                <RefreshCw size={10} color={COLORS.warning} />
+              )}
+              <Text style={[
+                styles.profileRole,
+                sync.sebayatCount === 0 && !isOffline && !sync.syncing && styles.syncWarning,
+                isOffline && styles.syncError,
+              ]}>
+                {syncLabel}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
         <View style={styles.headerActions}>
@@ -193,9 +225,10 @@ function SupervisorTabs() {
 }
 
 export default function SupervisorLayout() {
+  const sync = useSupervisorSync();
   return (
     <View style={styles.container}>
-      <GlobalHeader />
+      <GlobalHeader sync={sync} />
       <OfflineBanner />
       <SupervisorTabs />
     </View>
@@ -245,9 +278,20 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   profileRole: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSecondary,
-    marginTop: 1,
+  },
+  syncRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  syncWarning: {
+    color: COLORS.warning,
+  },
+  syncError: {
+    color: COLORS.error,
   },
   headerActions: {
     flexDirection: "row",

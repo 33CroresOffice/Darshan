@@ -10,6 +10,9 @@ const GATE_CACHE_PREFIX = "@offline:gate:";
 const SETTINGS_CACHE_KEY = "@offline:settings";
 const SLOTS_CACHE_KEY_PREFIX = "@offline:slots:";
 const LAST_SYNC_KEY = "@offline:last_sync";
+const SEBAYAT_LIST_KEY = "@offline:supervisor:sebayat_list";
+const ACTIVE_SLOT_SESSION_KEY = "@offline:supervisor:active_slot_session";
+const STAFF_TICKETS_KEY_PREFIX = "@offline:supervisor:staff_tickets:";
 
 const ENTRY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -220,14 +223,156 @@ export async function loadCachedGateEntries(scope: string): Promise<GateEntry[]>
   return raw ? (JSON.parse(raw) as GateEntry[]) : [];
 }
 
+export async function upsertCachedGateEntry(scope: string, entry: GateEntry): Promise<void> {
+  const list = await loadCachedGateEntries(scope);
+  const idx = list.findIndex((e) => e.id === entry.id);
+  if (idx >= 0) list[idx] = entry;
+  else list.unshift(entry);
+  await cacheGateEntries(scope, list);
+}
+
+// ---------- Supervisor sebayat list cache ----------
+
+export interface CachedSebayat {
+  id: string;
+  full_name: string;
+  phone_number: string;
+  temple_health_card_id: string | null;
+  temple_id_card_number: string | null;
+  allotment_number: string | null;
+  photo_url: string;
+  category_name: string | null;
+  approval_status: string;
+}
+
+export async function saveSebayatListCache(sebayats: CachedSebayat[]): Promise<void> {
+  await AsyncStorage.setItem(SEBAYAT_LIST_KEY, JSON.stringify(sebayats));
+}
+
+export async function loadSebayatListCache(): Promise<CachedSebayat[]> {
+  const raw = await AsyncStorage.getItem(SEBAYAT_LIST_KEY);
+  return raw ? (JSON.parse(raw) as CachedSebayat[]) : [];
+}
+
+export function searchSebayatListCache(
+  list: CachedSebayat[],
+  query: string,
+  mode: "phone" | "templeid"
+): CachedSebayat | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const last10 = (n: string) => n.replace(/\D/g, "").slice(-10);
+  for (const s of list) {
+    if (mode === "phone" && last10(s.phone_number ?? "") === last10(q)) {
+      return s;
+    }
+    if (mode === "templeid") {
+      const cardNum = (s.temple_id_card_number ?? "").toLowerCase();
+      const hcNum = (s.temple_health_card_id ?? "").toLowerCase();
+      if (cardNum === q || hcNum === q) return s;
+    }
+  }
+  return null;
+}
+
+// ---------- Supervisor active slot session cache ----------
+
+export interface CachedSlotSession {
+  id: string;
+  slot_id: string;
+  slot_name: string;
+  status: "active" | "ended";
+  started_at: string;
+  savedAt: string;
+}
+
+export async function saveActiveSlotSession(session: CachedSlotSession | null): Promise<void> {
+  if (session) {
+    await AsyncStorage.setItem(ACTIVE_SLOT_SESSION_KEY, JSON.stringify(session));
+  } else {
+    await AsyncStorage.removeItem(ACTIVE_SLOT_SESSION_KEY);
+  }
+}
+
+export async function loadActiveSlotSession(): Promise<CachedSlotSession | null> {
+  const raw = await AsyncStorage.getItem(ACTIVE_SLOT_SESSION_KEY);
+  return raw ? (JSON.parse(raw) as CachedSlotSession) : null;
+}
+
+// ---------- Local quota deduction (supervisor gate events) ----------
+
+export async function deductLocalQuota(sebayatId: string, devoteeCount: number): Promise<void> {
+  const date = todayString();
+  const ledger = await loadServerQuota(sebayatId, date);
+  const maxLimit = ledger?.maxLimit ?? 20;
+  const serverUsed = (ledger?.serverUsed ?? 0) + devoteeCount;
+  await saveServerQuota(sebayatId, date, {
+    maxLimit,
+    usedCount: serverUsed,
+    remainingCount: Math.max(0, maxLimit - serverUsed),
+  });
+}
+
+// ---------- Per-sebayat gate activity log ----------
+
+const GATE_LOG_PREFIX = "@offline:supervisor:gate_log:";
+
+export interface GateLogEntry {
+  timestamp: string;
+  count: number;
+  gate: "west" | "inner";
+  entryCode: string;
+}
+
+function gateLogKey(sebayatId: string, date: string) {
+  return `${GATE_LOG_PREFIX}${sebayatId}:${date}`;
+}
+
+export async function appendGateLog(
+  sebayatId: string,
+  entry: GateLogEntry
+): Promise<void> {
+  const date = todayString();
+  const key = gateLogKey(sebayatId, date);
+  const raw = await AsyncStorage.getItem(key);
+  const list: GateLogEntry[] = raw ? JSON.parse(raw) : [];
+  list.push(entry);
+  await AsyncStorage.setItem(key, JSON.stringify(list));
+}
+
+export async function getGateLog(sebayatId: string): Promise<GateLogEntry[]> {
+  const date = todayString();
+  const key = gateLogKey(sebayatId, date);
+  const raw = await AsyncStorage.getItem(key);
+  return raw ? (JSON.parse(raw) as GateLogEntry[]) : [];
+}
+
+// ---------- Staff tickets cache (supervisor-created, offline-pending) ----------
+
+export async function getStaffCachedTickets(date: string): Promise<GateEntry[]> {
+  const raw = await AsyncStorage.getItem(`${STAFF_TICKETS_KEY_PREFIX}${date}`);
+  return raw ? (JSON.parse(raw) as GateEntry[]) : [];
+}
+
+export async function upsertStaffCachedTicket(date: string, ticket: GateEntry): Promise<void> {
+  const list = await getStaffCachedTickets(date);
+  const idx = list.findIndex((t) => t.id === ticket.id || t.entry_code === ticket.entry_code);
+  if (idx >= 0) list[idx] = ticket;
+  else list.unshift(ticket);
+  await AsyncStorage.setItem(`${STAFF_TICKETS_KEY_PREFIX}${date}`, JSON.stringify(list));
+}
+
 // ---------- Outbox ----------
 
 export type OutboxOpType =
   | "ticket.create"
   | "ticket.cancel"
   | "ticket.edit_count"
+  | "ticket.staff_create"
   | "gate.west_verify"
-  | "gate.inner_verify";
+  | "gate.west_register"
+  | "gate.inner_verify"
+  | "gate.flag_discrepancy";
 
 export interface OutboxOp {
   id: string;
@@ -332,10 +477,16 @@ async function runOp(item: OutboxOp): Promise<void> {
       return runTicketCancel(item.payload);
     case "ticket.edit_count":
       return runTicketEditCount(item.payload);
+    case "ticket.staff_create":
+      return runStaffTicketCreate(item.payload);
     case "gate.west_verify":
       return runWestVerify(item.payload);
+    case "gate.west_register":
+      return runWestRegister(item.payload);
     case "gate.inner_verify":
       return runInnerVerify(item.payload);
+    case "gate.flag_discrepancy":
+      return runFlagDiscrepancy(item.payload);
   }
 }
 
@@ -387,6 +538,26 @@ async function runWestVerify(p: Record<string, unknown>) {
   if (error) throw new Error(error.message);
 }
 
+async function runWestRegister(p: Record<string, unknown>) {
+  const { error, data } = await supabase.rpc("reconcile_offline_ticket", {
+    p_idempotency_key: p.idempotencyKey,
+    p_entry_code: p.entryCode,
+    p_qr_code_data: p.qrCodeData,
+    p_sebayat_id: p.sebayatId,
+    p_slot_id: p.slotId ?? null,
+    p_declared_count: p.declaredCount,
+    p_entry_date: p.entryDate,
+    p_entry_mode: p.entryMode ?? "west_gate",
+    p_expires_at: p.expiresAt ?? null,
+    p_client_created_at: p.clientCreatedAt,
+    p_device_id: p.deviceId,
+  });
+  if (error) throw new Error(error.message);
+  if (data && typeof p.sebayatId === "string" && typeof p.entryDate === "string") {
+    await upsertCachedTicket(p.sebayatId, p.entryDate, data as GateEntry);
+  }
+}
+
 async function runInnerVerify(p: Record<string, unknown>) {
   const { error } = await supabase.rpc("apply_inner_gate_event", {
     p_idempotency_key: p.idempotencyKey,
@@ -396,6 +567,41 @@ async function runInnerVerify(p: Record<string, unknown>) {
     p_device_id: p.deviceId,
     p_reason: p.reason ?? null,
   });
+  if (error) throw new Error(error.message);
+}
+
+async function runStaffTicketCreate(p: Record<string, unknown>) {
+  // Reconcile via the same RPC as a regular offline ticket — the server treats
+  // staff-created tickets identically; the distinction is only for client-side tracking.
+  const { error, data } = await supabase.rpc("reconcile_offline_ticket", {
+    p_idempotency_key: p.idempotencyKey,
+    p_entry_code: p.entryCode,
+    p_qr_code_data: p.qrCodeData,
+    p_sebayat_id: p.sebayatId,
+    p_slot_id: p.slotId ?? null,
+    p_declared_count: p.declaredCount,
+    p_entry_date: p.entryDate,
+    p_entry_mode: p.entryMode,
+    p_expires_at: p.expiresAt,
+    p_client_created_at: p.clientCreatedAt,
+    p_device_id: p.deviceId,
+  });
+  if (error) throw new Error(error.message);
+  if (data && typeof p.sebayatId === "string" && typeof p.entryDate === "string") {
+    await upsertCachedTicket(p.sebayatId, p.entryDate, data as GateEntry);
+  }
+}
+
+async function runFlagDiscrepancy(p: Record<string, unknown>) {
+  const { error } = await supabase
+    .from("gate_entries")
+    .update({
+      status: "discrepancy_flagged",
+      inner_gate_supervisor_id: p.supervisorId as string,
+      inner_gate_verification_time: p.capturedAt as string,
+      notes: p.reason as string,
+    })
+    .eq("id", p.entryId as string);
   if (error) throw new Error(error.message);
 }
 

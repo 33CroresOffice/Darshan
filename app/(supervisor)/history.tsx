@@ -17,7 +17,9 @@ import {
   ChevronRight,
   Users,
   Calendar,
+  WifiOff,
 } from "lucide-react-native";
+
 import { getTodayEntries } from "@/services/entryService";
 import { AdminHeader } from "@/components/layout/AdminHeader";
 import { supabase } from "@/lib/supabase";
@@ -45,6 +47,7 @@ export default function HistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterStatus>("all");
+  const [showOfflineBanner, setShowOfflineBanner] = useState(false);
 
   const STATUS_CONFIG: Record<EntryStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
     pending: { label: t('supervisor.history.awaiting'), ...STATUS_STYLE.pending },
@@ -60,9 +63,12 @@ export default function HistoryScreen() {
     if (cached.length > 0) setEntries(cached);
 
     if (!connectivity.isOnline()) {
+      setShowOfflineBanner(cached.length > 0);
       setLoading(false);
       return;
     }
+
+    setShowOfflineBanner(false);
 
     try {
       const data = await getTodayEntries();
@@ -70,6 +76,7 @@ export default function HistoryScreen() {
       await cacheGateEntries(CACHE_SCOPE_TODAY, data);
     } catch (err) {
       console.error("Failed to fetch entries:", err);
+      setShowOfflineBanner(cached.length > 0);
     } finally {
       setLoading(false);
     }
@@ -229,6 +236,13 @@ export default function HistoryScreen() {
             </Text>
           </View>
         </View>
+
+        {showOfflineBanner && (
+          <View style={styles.offlineBanner}>
+            <WifiOff size={14} color="#92400E" />
+            <Text style={styles.offlineBannerText}>{t('common.offlineCachedData')}</Text>
+          </View>
+        )}
 
         <ScrollView
           horizontal
@@ -454,5 +468,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textMuted,
     marginTop: 6,
+  },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEF3C7",
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  offlineBannerText: {
+    fontSize: 13,
+    color: "#92400E",
+    fontWeight: "500",
+    flex: 1,
   },
 });
