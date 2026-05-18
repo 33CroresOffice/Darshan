@@ -105,16 +105,9 @@ export default function HistoryScreen() {
   const filteredEntries =
     filter === "all" ? entries : entries.filter((e) => e.status === filter);
 
-  const FilterButton = ({
-    status,
-    label,
-    count,
-  }: {
-    status: FilterStatus;
-    label: string;
-    count: number;
-  }) => (
+  const renderFilterButton = (status: FilterStatus, label: string, count: number) => (
     <TouchableOpacity
+      key={status}
       style={[styles.filterButton, filter === status && styles.filterButtonActive]}
       onPress={() => setFilter(status)}
       activeOpacity={0.7}
@@ -145,7 +138,7 @@ export default function HistoryScreen() {
     </TouchableOpacity>
   );
 
-  const EntryItem = ({ entry }: { entry: GateEntry }) => {
+  const renderEntryItem = (entry: GateEntry) => {
     const config = STATUS_CONFIG[entry.status] || {
       label: entry.status,
       color: "#6B7280",
@@ -157,6 +150,7 @@ export default function HistoryScreen() {
 
     return (
       <TouchableOpacity
+        key={entry.id}
         style={styles.entryItem}
         onPress={() => router.push(`/(supervisor)/entry/${entry.id}`)}
         activeOpacity={0.7}
@@ -250,27 +244,11 @@ export default function HistoryScreen() {
           style={styles.filterScroll}
           contentContainerStyle={styles.filterContainer}
         >
-          <FilterButton status="all" label={t('supervisor.history.all')} count={statusCounts.all} />
-          <FilterButton
-            status="pending"
-            label={t('supervisor.history.awaiting')}
-            count={statusCounts.pending}
-          />
-          <FilterButton
-            status="registered"
-            label={t('supervisor.history.atInnerGate')}
-            count={statusCounts.registered}
-          />
-          <FilterButton
-            status="verified"
-            label={t('supervisor.history.verified')}
-            count={statusCounts.verified}
-          />
-          <FilterButton
-            status="discrepancy_flagged"
-            label={t('supervisor.history.flagged')}
-            count={statusCounts.discrepancy_flagged}
-          />
+          {renderFilterButton("all", t('supervisor.history.all'), statusCounts.all)}
+          {renderFilterButton("pending", t('supervisor.history.awaiting'), statusCounts.pending)}
+          {renderFilterButton("registered", t('supervisor.history.atInnerGate'), statusCounts.registered)}
+          {renderFilterButton("verified", t('supervisor.history.verified'), statusCounts.verified)}
+          {renderFilterButton("discrepancy_flagged", t('supervisor.history.flagged'), statusCounts.discrepancy_flagged)}
         </ScrollView>
 
         {filteredEntries.length === 0 ? (
@@ -285,9 +263,7 @@ export default function HistoryScreen() {
           </View>
         ) : (
           <View style={styles.entriesList}>
-            {filteredEntries.map((entry) => (
-              <EntryItem key={entry.id} entry={entry} />
-            ))}
+            {filteredEntries.map((entry) => renderEntryItem(entry))}
           </View>
         )}
       </ScrollView>

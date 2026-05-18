@@ -269,9 +269,11 @@ export default function WestGateScreen() {
 
       if (resolved && resolved.source === "offline_payload" && resolved.idempotencyKey && resolved.declaredCount !== null && resolved.sebayatId) {
         // Duplicate-scan guard: prevent the same offline ticket from being
-        // accepted twice on this supervisor device in the same day.
+        // accepted twice at the west gate on this supervisor device in the same day.
+        // Only block on records from the west gate — an inner gate record means the
+        // ticket already completed the full flow and should block here too.
         const scannedRecord = await getScannedRecord(resolved.idempotencyKey);
-        if (scannedRecord) {
+        if (scannedRecord && scannedRecord.gate === "west") {
           setAlreadyScannedRecord(scannedRecord);
           setShowScanner(false);
           return;

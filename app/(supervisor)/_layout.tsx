@@ -83,7 +83,7 @@ function GlobalHeader({ sync }: { sync: ReturnType<typeof useSupervisorSync> }) 
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => router.push("/(admin)/notifications")}
+            onPress={() => router.push("/(supervisor)/notifications")}
           >
             <Bell size={20} color={COLORS.textSecondary} />
             {unreadCount > 0 && (
@@ -216,6 +216,12 @@ function SupervisorTabs() {
         />
         <Tabs.Screen
           name="slot-logs"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="notifications"
           options={{
             href: null,
           }}
