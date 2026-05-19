@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -48,6 +48,7 @@ export function SlotControlCard({ profile, onSessionChange, logsRoute }: SlotCon
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const channelId = useRef(`slot-control-card-${Math.random().toString(36).slice(2)}`);
   const isAdmin = profile?.role === "superadmin" || profile?.role === "admin";
   const [collapsed, setCollapsed] = useState(true);
   const [isOffline, setIsOffline] = useState(!connectivity.isOnline());
@@ -104,7 +105,7 @@ export function SlotControlCard({ profile, onSessionChange, logsRoute }: SlotCon
 
   useEffect(() => {
     const channel = supabase
-      .channel("slot-control-card-realtime")
+      .channel(channelId.current)
       .on("postgres_changes", { event: "*", schema: "public", table: "slot_sessions" }, () => {
         fetchData();
       })

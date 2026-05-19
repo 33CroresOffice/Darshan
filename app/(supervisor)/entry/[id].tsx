@@ -29,6 +29,7 @@ import type { GateEntry, EntryAuditLog, EntryStatus, EntryAction, Gumasta } from
 import { useTranslation } from "react-i18next";
 
 const STATUS_STYLE: Record<EntryStatus, { color: string; bg: string; icon: React.ReactNode }> = {
+  pending: { color: "#8B5CF6", bg: "#EDE9FE", icon: <Clock size={20} color="#8B5CF6" /> },
   registered: { color: "#F59E0B", bg: "#FEF3C7", icon: <Clock size={20} color="#F59E0B" /> },
   verified: { color: "#10B981", bg: "#D1FAE5", icon: <Check size={20} color="#10B981" /> },
   discrepancy_flagged: { color: "#EF4444", bg: "#FEE2E2", icon: <Flag size={20} color="#EF4444" /> },
@@ -47,6 +48,7 @@ export default function EntryDetailScreen() {
   const [notFound, setNotFound] = useState(false);
 
   const STATUS_CONFIG: Record<EntryStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
+    pending: { label: t('supervisor.entry.statusPending'), ...STATUS_STYLE.pending },
     registered: { label: t('supervisor.entry.statusPending'), ...STATUS_STYLE.registered },
     verified: { label: t('supervisor.history.verified'), ...STATUS_STYLE.verified },
     discrepancy_flagged: { label: t('supervisor.entry.statusFlagged'), ...STATUS_STYLE.discrepancy_flagged },
@@ -142,7 +144,12 @@ export default function EntryDetailScreen() {
     );
   }
 
-  const config = STATUS_CONFIG[entry.status];
+  const config = STATUS_CONFIG[entry.status] ?? {
+    label: entry.status,
+    color: COLORS.textMuted,
+    bg: COLORS.surfaceSecondary,
+    icon: <Clock size={20} color={COLORS.textMuted} />,
+  };
   const sebayat = entry.sebayat as any;
   const westSupervisor = entry.west_gate_supervisor as any;
 

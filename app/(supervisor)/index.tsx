@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -38,6 +38,7 @@ export default function SupervisorDashboard() {
   const { profile } = useAuth();
   const { t } = useTranslation();
   const ln = useLocalizedNumber();
+  const channelId = useRef(`supervisor-dashboard-${Math.random().toString(36).slice(2)}`);
   const [stats, setStats] = useState<EntryStats | null>(null);
   const [pendingEntries, setPendingEntries] = useState<GateEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +100,7 @@ export default function SupervisorDashboard() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("supervisor-dashboard-realtime")
+      .channel(channelId.current)
       .on("postgres_changes", { event: "*", schema: "public", table: "gate_entries" }, () => {
         fetchData();
       })

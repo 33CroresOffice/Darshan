@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ const { width } = Dimensions.get("window");
 export default function DashboardScreen() {
   const router = useRouter();
   const { profile, registration } = useAuth();
+  const channelId = useRef(`admin-dashboard-${Math.random().toString(36).slice(2)}`);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [entryStats, setEntryStats] = useState<EntryStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,7 +61,7 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("dashboard-realtime")
+      .channel(channelId.current)
       .on("postgres_changes", { event: "*", schema: "public", table: "sebayat_registrations" }, () => {
         fetchStats();
       })

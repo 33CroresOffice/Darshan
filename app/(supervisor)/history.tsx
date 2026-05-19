@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -43,6 +43,7 @@ type FilterStatus = "all" | EntryStatus;
 export default function HistoryScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const channelId = useRef(`supervisor-history-${Math.random().toString(36).slice(2)}`);
   const [entries, setEntries] = useState<GateEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,7 +89,7 @@ export default function HistoryScreen() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("supervisor-history-realtime")
+      .channel(channelId.current)
       .on("postgres_changes", { event: "*", schema: "public", table: "gate_entries" }, () => {
         fetchEntries();
       })

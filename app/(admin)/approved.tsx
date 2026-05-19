@@ -21,6 +21,7 @@ import type { SebayatRegistration, Category } from "@/types";
 
 export default function ApprovedScreen() {
   const router = useRouter();
+  const channelId = useRef(`admin-approved-${Math.random().toString(36).slice(2)}`);
   const [registrations, setRegistrations] = useState<SebayatRegistration[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -73,7 +74,7 @@ export default function ApprovedScreen() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("approved-registrations")
+      .channel(channelId.current)
       .on("postgres_changes", { event: "*", schema: "public", table: "sebayat_registrations" }, () => {
         fetchRegistrations();
       })

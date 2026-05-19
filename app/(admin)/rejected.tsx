@@ -17,6 +17,7 @@ import type { SebayatRegistration } from "@/types";
 
 export default function RejectedScreen() {
   const router = useRouter();
+  const channelId = useRef(`admin-rejected-${Math.random().toString(36).slice(2)}`);
   const [registrations, setRegistrations] = useState<SebayatRegistration[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,7 +39,7 @@ export default function RejectedScreen() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("rejected-registrations")
+      .channel(channelId.current)
       .on("postgres_changes", { event: "*", schema: "public", table: "sebayat_registrations" }, () => {
         fetchRegistrations();
       })

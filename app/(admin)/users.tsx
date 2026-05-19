@@ -33,6 +33,7 @@ const PAGE_SIZE = 5;
 export default function UsersScreen() {
   const router = useRouter();
   const { profile: currentUser } = useAuth();
+  const channelId = useRef(`admin-users-${Math.random().toString(36).slice(2)}`);
   const [users, setUsers] = useState<UserWithDetails[]>([]);
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -98,7 +99,7 @@ export default function UsersScreen() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("users-realtime")
+      .channel(channelId.current)
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
         fetchPage(0, currentFilter.current, currentSearch.current, false);
         fetchStats();
