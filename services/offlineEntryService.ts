@@ -22,6 +22,7 @@ import {
   deductLocalQuota,
   appendGateLog,
   getGateLog,
+  getStaffCachedTickets,
 } from "@/lib/offline";
 import {
   createDarshanTicket,
@@ -360,6 +361,25 @@ export async function resolveScannedTicket(qrData: string): Promise<ResolvedQrTi
       sebayatId: (parsed?.sebayatId as string) ?? null,
     };
   }
+
+  // Last resort: QR has only { entryCode } (legacy online-created ticket format).
+  // Look it up in the supervisor's local staff ticket cache so offline scanning works.
+  try {
+    const staffCache = await getStaffCachedTickets(todayString());
+    const cached = staffCache.find((t) => t.entry_code === entryCode);
+    if (cached) {
+      const qr = cached.qr_code_data as Record<string, unknown> | null;
+      const cachedKey = (qr?.idempotencyKey as string | undefined) ?? cached.idempotency_key ?? null;
+      return {
+        source: "offline_payload",
+        idempotencyKey: cachedKey ?? entryCode,
+        entryCode,
+        declaredCount: cached.declared_devotee_count,
+        sebayatId: cached.sebayat_id,
+      };
+    }
+  } catch {}
+
   return null;
 }
 

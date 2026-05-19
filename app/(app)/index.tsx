@@ -212,14 +212,20 @@ export default function HomeScreen() {
       // Discard if a newer call has started
       if (callId !== ticketCallId.current) return;
 
-      // Keep local-only tickets the server doesn't know about yet
+      // Keep local-only tickets the server doesn't know about yet.
+      // Also filter by entry_code so a synced offline ticket (local_xxx vs real UUID,
+      // same entry_code) doesn't appear twice once the server has it.
       const serverIds = new Set(serverToday.map((t) => t.id));
-      const localOnly = cachedMerged.filter((t) => t.id.startsWith("local_") && !serverIds.has(t.id));
+      const serverCodes = new Set(serverToday.map((t) => t.entry_code));
+      const localOnly = cachedMerged.filter(
+        (t) => t.id.startsWith("local_") && !serverIds.has(t.id) && !serverCodes.has(t.entry_code)
+      );
       const finalToday = [...localOnly, ...serverToday];
 
       const serverPendingIds = new Set(serverPending.map((t) => t.id));
+      const serverPendingCodes = new Set(serverPending.map((t) => t.entry_code));
       const extraPending = localOnly.filter(
-        (t) => t.status === "pending" && !serverPendingIds.has(t.id)
+        (t) => t.status === "pending" && !serverPendingIds.has(t.id) && !serverPendingCodes.has(t.entry_code)
       );
       const finalPending = [...extraPending, ...serverPending];
 
@@ -244,6 +250,8 @@ export default function HomeScreen() {
         return prevSig === nextSig ? prev : next;
       });
 
+      // Persist the deduped list — this evicts stale local_ entries whose
+      // entry_code is now covered by a real server record.
       await Promise.all([
         writeCache(CACHE_TODAY_KEY(registration.id, todayDate), finalToday),
         writeCache(CACHE_PENDING_KEY(registration.id, todayDate), finalPending),

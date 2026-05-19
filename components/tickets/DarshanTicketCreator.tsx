@@ -1025,7 +1025,11 @@ export function DarshanTicketCreator({
                 )}
                 <View style={styles.qrContainer}>
                   <QRCode
-                    value={JSON.stringify({ entryCode: createdTicket.entry_code })}
+                    value={
+                      createdTicket.qr_code_data
+                        ? JSON.stringify(createdTicket.qr_code_data)
+                        : JSON.stringify({ entryCode: createdTicket.entry_code })
+                    }
                     size={180}
                   />
                 </View>
