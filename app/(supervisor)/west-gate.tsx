@@ -392,8 +392,15 @@ export default function WestGateScreen() {
             west_gate_entry_time: new Date().toISOString(),
             west_actual_count: entry.declared_devotee_count,
           };
+          // Remove instantly from pending list and cache so a second tap is impossible
+          const pruned = (prev: GateEntry[]) =>
+            prev.filter((t) => t.id !== entry.id && t.entry_code !== entry.entry_code);
+          setPendingTickets((prev) => pruned(prev));
+          await cacheGateEntries(CACHE_SCOPE_WEST_PENDING, pruned(await loadCachedGateEntries(CACHE_SCOPE_WEST_PENDING)));
+          await cacheGateEntries("supervisor:pending", pruned(await loadCachedGateEntries("supervisor:pending")));
           setResult({ success: true, message: r.message, entry: synthEntry });
-          await loadPendingTickets();
+          setSelectedEntry(null);
+          loadPendingTickets();
           if (sebayat) {
             const remaining = await getSebayatPendingTickets(sebayat.id);
             setSebayatPendingTickets(remaining);
@@ -406,8 +413,15 @@ export default function WestGateScreen() {
 
       const result = await acknowledgeWestGateEntry(entry.id, profile.id);
       if (result.success) {
+        // Remove instantly from pending list and cache so a second tap is impossible
+        const pruned = (prev: GateEntry[]) =>
+          prev.filter((t) => t.id !== entry.id && t.entry_code !== entry.entry_code);
+        setPendingTickets((prev) => pruned(prev));
+        await cacheGateEntries(CACHE_SCOPE_WEST_PENDING, pruned(await loadCachedGateEntries(CACHE_SCOPE_WEST_PENDING)));
+        await cacheGateEntries("supervisor:pending", pruned(await loadCachedGateEntries("supervisor:pending")));
         setResult(result);
-        await loadPendingTickets();
+        setSelectedEntry(null);
+        loadPendingTickets();
         if (sebayat) {
           const remaining = await getSebayatPendingTickets(sebayat.id);
           setSebayatPendingTickets(remaining);
@@ -632,7 +646,7 @@ export default function WestGateScreen() {
                   const hasSlot = !!ticket.slot_id;
                   const slotIsActive = hasSlot && activeSession?.slot_id === ticket.slot_id;
                   const slotBlocked = hasSlot && !slotIsActive;
-                  const isDisabled = expired || slotBlocked;
+                  const isDisabled = expired || slotBlocked || submitting;
                   return (
                     <TouchableOpacity
                       key={ticket.id}
@@ -640,9 +654,10 @@ export default function WestGateScreen() {
                         styles.pendingCard,
                         expired && styles.pendingCardExpired,
                         slotBlocked && !expired && styles.pendingCardBlocked,
+                        isDisabled && { opacity: 0.5 },
                       ]}
                       onPress={() => {
-                        if (!expired) {
+                        if (!isDisabled) {
                           setSelectedEntry(ticket);
                           setShowAcknowledgeModal(true);
                         }

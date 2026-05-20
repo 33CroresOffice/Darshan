@@ -392,6 +392,13 @@ export default function InnerGateScreen() {
             entryCode: offlineEntry.entryCode,
             scannedAt: new Date().toISOString(),
           });
+          // Remove from pending list and shared cache instantly
+          const pruneByCode = (list: GateEntry[]) =>
+            list.filter((t) => t.entry_code !== offlineEntry.entryCode);
+          setPendingList((prev) => pruneByCode(prev));
+          await cacheGateEntries(CACHE_SCOPE_INNER_PENDING, pruneByCode(await loadCachedGateEntries(CACHE_SCOPE_INNER_PENDING)));
+          await cacheGateEntries("supervisor:pending", pruneByCode(await loadCachedGateEntries("supervisor:pending")));
+          loadPendingList();
         }
         const fakeEntry: GateEntry = {
           id: offlineEntry.idempotencyKey,
@@ -444,6 +451,15 @@ export default function InnerGateScreen() {
           sebayatId: entry.sebayat_id,
           entryCode: entry.entry_code,
         });
+        if (r.success) {
+          const pruneEntry = (list: GateEntry[]) =>
+            list.filter((t) => t.id !== entry.id && t.entry_code !== entry.entry_code);
+          setPendingList((prev) => pruneEntry(prev));
+          await cacheGateEntries(CACHE_SCOPE_INNER_PENDING, pruneEntry(await loadCachedGateEntries(CACHE_SCOPE_INNER_PENDING)));
+          await cacheGateEntries("supervisor:pending", pruneEntry(await loadCachedGateEntries("supervisor:pending")));
+          setEntry(null);
+          loadPendingList();
+        }
         const merged: GateEntry = {
           ...entry,
           verified_devotee_count: verifiedCount,
@@ -463,6 +479,15 @@ export default function InnerGateScreen() {
         needsReason ? adjustReason.trim() : undefined
       );
 
+      if (verifyResult.success) {
+        const pruneEntry = (list: GateEntry[]) =>
+          list.filter((t) => t.id !== entry.id && t.entry_code !== entry.entry_code);
+        setPendingList((prev) => pruneEntry(prev));
+        await cacheGateEntries(CACHE_SCOPE_INNER_PENDING, pruneEntry(await loadCachedGateEntries(CACHE_SCOPE_INNER_PENDING)));
+        await cacheGateEntries("supervisor:pending", pruneEntry(await loadCachedGateEntries("supervisor:pending")));
+        setEntry(null);
+        loadPendingList();
+      }
       setResult(verifyResult);
       if (!verifyResult.success) {
         setError(verifyResult.message);
@@ -692,9 +717,10 @@ export default function InnerGateScreen() {
               pendingList.map((item) => (
                 <TouchableOpacity
                   key={item.id}
-                  style={styles.pendingCard}
-                  onPress={() => selectPendingEntry(item)}
+                  style={[styles.pendingCard, submitting && { opacity: 0.5 }]}
+                  onPress={() => { if (!submitting) selectPendingEntry(item); }}
                   activeOpacity={0.7}
+                  disabled={submitting}
                 >
                   <View style={styles.pendingLeft}>
                     {(item.sebayat as any)?.photo_url ? (
