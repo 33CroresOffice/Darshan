@@ -37,12 +37,12 @@ export function FilePicker({ label, value, onChange, error }: FilePickerProps) {
     if (status !== "granted") return;
 
     const result = await ExpoImagePicker.launchImageLibraryAsync({
-      mediaTypes: ExpoImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: false,
       quality: 0.85,
     });
 
-    if (!result.canceled && result.assets[0]) {
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       onChange(result.assets[0].uri);
     }
   };
@@ -56,7 +56,7 @@ export function FilePicker({ label, value, onChange, error }: FilePickerProps) {
       quality: 0.85,
     });
 
-    if (!result.canceled && result.assets[0]) {
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       onChange(result.assets[0].uri);
     }
   };

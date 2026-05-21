@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, Image, StyleSheet } from "react-native";
+import { useState } from "react";
+import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator } from "react-native";
 import * as ExpoImagePicker from "expo-image-picker";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import { Camera, Image as ImageIcon, X } from "lucide-react-native";
@@ -16,40 +17,50 @@ export function ImagePicker({
   value,
   onChange,
   error,
-  placeholder = "Tap to select image",
 }: ImagePickerProps) {
+  const [loading, setLoading] = useState(false);
+
   const pickImage = async () => {
-    const { status } = await ExpoImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      return;
-    }
+    try {
+      const { status } = await ExpoImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") return;
 
-    const result = await ExpoImagePicker.launchImageLibraryAsync({
-      mediaTypes: ExpoImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
+      setLoading(true);
+      const result = await ExpoImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      onChange(result.assets[0].uri);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        onChange(result.assets[0].uri);
+      }
+    } catch {
+      // permission denied or picker closed
+    } finally {
+      setLoading(false);
     }
   };
 
   const takePhoto = async () => {
-    const { status } = await ExpoImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      return;
-    }
+    try {
+      const { status } = await ExpoImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") return;
 
-    const result = await ExpoImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
+      setLoading(true);
+      const result = await ExpoImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      onChange(result.assets[0].uri);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        onChange(result.assets[0].uri);
+      }
+    } catch {
+      // permission denied or camera unavailable
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -57,14 +68,31 @@ export function ImagePicker({
     onChange(null);
   };
 
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        {label && <Text style={styles.label}>{label}</Text>}
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Processing…</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {label && <Text style={styles.label}>{label}</Text>}
 
       {value ? (
         <View style={styles.imageContainer}>
-          <Image source={{ uri: value }} style={styles.image} />
-          <TouchableOpacity style={styles.removeButton} onPress={removeImage}>
+          <Image
+            source={{ uri: value }}
+            style={styles.image}
+            resizeMode="cover"
+            onError={() => onChange(null)}
+          />
+          <TouchableOpacity style={styles.removeButton} onPress={removeImage} activeOpacity={0.8}>
             <X size={16} color={COLORS.surface} />
           </TouchableOpacity>
         </View>
@@ -163,6 +191,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     ...SHADOWS.small,
+  },
+  loadingBox: {
+    height: 80,
+    borderRadius: RADIUS.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceSecondary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.sm,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
   },
   error: {
     fontSize: 12,
