@@ -1,55 +1,6 @@
 import { supabase } from "@/lib/supabase";
+import { uriToBlob, uriToBase64DataUrl } from "@/lib/fileUtils";
 import type { RegistrationFormData, SebayatRegistration } from "@/types";
-import { Platform } from "react-native";
-
-function base64ToBlob(base64: string, mime: string): Blob {
-  const byteChars = atob(base64);
-  const byteArrays: Uint8Array[] = [];
-  for (let offset = 0; offset < byteChars.length; offset += 512) {
-    const slice = byteChars.slice(offset, offset + 512);
-    const byteNumbers = new Array(slice.length);
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i);
-    }
-    byteArrays.push(new Uint8Array(byteNumbers));
-  }
-  return new Blob(byteArrays, { type: mime });
-}
-
-// XMLHttpRequest handles local file:// and content:// URIs on Android/iOS
-// where fetch() throws "Network request failed".
-function uriToBlobXHR(uri: string): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.responseType = "blob";
-    xhr.onload = () => {
-      if (xhr.status === 0 || xhr.status === 200) {
-        resolve(xhr.response as Blob);
-      } else {
-        reject(new Error(`XHR failed with status ${xhr.status}`));
-      }
-    };
-    xhr.onerror = () => reject(new Error("XHR network error reading local file"));
-    xhr.open("GET", uri);
-    xhr.send();
-  });
-}
-
-async function uriToBlob(uri: string): Promise<Blob> {
-  if (uri.startsWith("data:")) {
-    const [header, base64Data] = uri.split(",");
-    const mimeMatch = header.match(/data:([^;]+)/);
-    const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-    return base64ToBlob(base64Data, mime);
-  }
-  // On native, always use XHR — fetch cannot read local file:// / content:// URIs on Android.
-  if (Platform.OS !== "web") {
-    return uriToBlobXHR(uri);
-  }
-  const response = await fetch(uri);
-  if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
-  return response.blob();
-}
 
 export async function uploadFile(
   bucket: string,
@@ -382,23 +333,6 @@ interface AdminSebayatRegistration {
   photoUri: string;
 }
 
-async function convertUriToBase64(uri: string): Promise<string> {
-  if (uri.startsWith("data:")) {
-    return uri;
-  }
-
-  const response = await fetch(uri);
-  const blob = await response.blob();
-
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      resolve(reader.result as string);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
 
 export async function registerSebayatByAdmin(
   data: AdminSebayatRegistration
@@ -416,11 +350,11 @@ export async function registerSebayatByAdmin(
   const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
   const templeIdCardBase64 = data.templeIdCardUri
-    ? await convertUriToBase64(data.templeIdCardUri)
+    ? await uriToBase64DataUrl(data.templeIdCardUri)
     : null;
-  const photoBase64 = await convertUriToBase64(data.photoUri);
+  const photoBase64 = await uriToBase64DataUrl(data.photoUri);
   const templeHealthCardBase64 = data.templeHealthCardUri
-    ? await convertUriToBase64(data.templeHealthCardUri)
+    ? await uriToBase64DataUrl(data.templeHealthCardUri)
     : null;
 
   const response = await fetch(`${supabaseUrl}/functions/v1/register-sebayat`, {

@@ -9,15 +9,9 @@ interface ImagePickerProps {
   value: string | null;
   onChange: (uri: string | null) => void;
   error?: string;
-  placeholder?: string;
 }
 
-export function ImagePicker({
-  label,
-  value,
-  onChange,
-  error,
-}: ImagePickerProps) {
+export function ImagePicker({ label, value, onChange, error }: ImagePickerProps) {
   const [loading, setLoading] = useState(false);
 
   const pickImage = async () => {

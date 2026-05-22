@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { normaliseError } from "@/lib/offline";
+import { uriToBlob } from "@/lib/fileUtils";
 import type { Gumasta, GateEntry, GumastaApproval, GumastaVoteSummary } from "@/types/database";
 
 export async function getGumastasBySebayat(sebayatId: string): Promise<Gumasta[]> {
@@ -152,26 +153,6 @@ export async function getTicketsByGumasta(
   const { data, error } = await query;
   if (error) throw new Error(normaliseError(error));
   return data ?? [];
-}
-
-async function uriToBlob(uri: string): Promise<Blob> {
-  if (uri.startsWith("data:")) {
-    const [header, base64Data] = uri.split(",");
-    const mimeMatch = header.match(/data:([^;]+)/);
-    const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-    const byteChars = atob(base64Data);
-    const byteArrays: Uint8Array[] = [];
-    for (let offset = 0; offset < byteChars.length; offset += 512) {
-      const slice = byteChars.slice(offset, offset + 512);
-      const byteNumbers = new Array(slice.length);
-      for (let i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
-      byteArrays.push(new Uint8Array(byteNumbers));
-    }
-    return new Blob(byteArrays, { type: mime });
-  }
-  const response = await fetch(uri);
-  if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
-  return response.blob();
 }
 
 export async function uploadGumastaPhoto(

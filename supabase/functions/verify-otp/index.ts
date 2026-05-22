@@ -123,10 +123,11 @@ Deno.serve(async (req: Request) => {
     let userId;
     let isNewUser = false;
 
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    let existingUser = existingUsers?.users?.find(
-      (u) => u.phone === fullPhone || u.phone === phoneWithoutPlus || u.email === dummyEmail
-    );
+    const { data: existingUserRows } = await supabaseAdmin.rpc("get_user_id_by_email", {
+      p_email: dummyEmail,
+    });
+    const existingUserId: string | null = existingUserRows?.[0]?.id ?? null;
+    const existingUser = existingUserId ? { id: existingUserId } : null;
 
     if (!existingUser) {
       const { data: newUser, error: createError } =

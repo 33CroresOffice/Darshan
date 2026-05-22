@@ -79,6 +79,8 @@ export default function AdminLayout() {
   const isSuperAdmin = profile?.role === "superadmin";
   const isAdmin = profile?.role === "admin";
   const canManageUsers = isSuperAdmin || isAdmin;
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 60 + insets.bottom;
 
   return (
     <View style={styles.container}>
@@ -97,8 +99,8 @@ export default function AdminLayout() {
             borderTopColor: COLORS.border,
             backgroundColor: COLORS.surface,
             paddingTop: 6,
-            paddingBottom: 10,
-            height: 80,
+            paddingBottom: insets.bottom + 4,
+            height: tabBarHeight,
             paddingHorizontal: 4,
           },
           tabBarLabelStyle: {

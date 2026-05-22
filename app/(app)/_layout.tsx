@@ -17,6 +17,8 @@ function AppBanner() {
 
 export default function AppLayout() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 60 + insets.bottom;
 
   return (
     <View style={styles.container}>
@@ -33,8 +35,8 @@ export default function AppLayout() {
             borderTopColor: COLORS.border,
             backgroundColor: COLORS.surface,
             paddingTop: 6,
-            paddingBottom: 8,
-            height: 84,
+            paddingBottom: insets.bottom + 4,
+            height: tabBarHeight,
             paddingHorizontal: 4,
           },
           tabBarLabelStyle: {
