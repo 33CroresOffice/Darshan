@@ -25,6 +25,7 @@ interface Props {
   gumastas: Gumasta[];
   onAssigned: (gumastaId: string | null) => void;
   onMutationStart?: () => void;
+  onAssignComplete?: () => void;
 }
 
 export function GumastaAssignButton({
@@ -35,6 +36,7 @@ export function GumastaAssignButton({
   gumastas,
   onAssigned,
   onMutationStart,
+  onAssignComplete,
 }: Props) {
   const { t } = useTranslation();
   const [modalVisible, setModalVisible] = useState(false);
@@ -47,6 +49,8 @@ export function GumastaAssignButton({
       await assignGumastaToTickets([ticketId], gumastaId);
     } catch {
       onAssigned(currentGumastaId);
+    } finally {
+      onAssignComplete?.();
     }
   };
 
@@ -57,6 +61,8 @@ export function GumastaAssignButton({
       await removeGumastaFromTicket(ticketId);
     } catch {
       onAssigned(currentGumastaId);
+    } finally {
+      onAssignComplete?.();
     }
   };
 

@@ -38,6 +38,24 @@ export async function getGumastaById(id: string): Promise<Gumasta | null> {
   return data;
 }
 
+export async function checkDuplicateGumasta(
+  sebayatId: string,
+  name: string,
+  contactNumber: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("gumastas")
+    .select("id")
+    .eq("sebayat_id", sebayatId)
+    .ilike("name", name)
+    .eq("contact_number", contactNumber)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(normaliseError(error));
+  return data !== null;
+}
+
 export async function createGumasta(
   sebayatId: string,
   input: { name: string; contact_number: string; photo_url?: string | null; aadhar_card_url?: string | null }
@@ -172,7 +190,7 @@ export async function uploadGumastaPhoto(
       upsert: true,
     });
 
-  if (uploadError) throw new Error(normaliseError(uploadError));
+  if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`);
 
   const { data } = supabase.storage.from("profile-photos").getPublicUrl(filePath);
   return data.publicUrl;
@@ -278,7 +296,7 @@ export async function uploadGumastaAadhar(
       upsert: true,
     });
 
-  if (uploadError) throw new Error(normaliseError(uploadError));
+  if (uploadError) throw new Error(`Aadhaar upload failed: ${uploadError.message}`);
 
   const { data } = supabase.storage.from("id-documents").getPublicUrl(filePath);
   return data.publicUrl;

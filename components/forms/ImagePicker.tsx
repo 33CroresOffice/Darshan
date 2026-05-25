@@ -12,14 +12,15 @@ interface ImagePickerProps {
 }
 
 export function ImagePicker({ label, value, onChange, error }: ImagePickerProps) {
-  const [loading, setLoading] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const pickImage = async () => {
+    if (picking) return;
     try {
       const { status } = await ExpoImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") return;
 
-      setLoading(true);
+      setPicking(true);
       const result = await ExpoImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         allowsEditing: true,
@@ -33,16 +34,17 @@ export function ImagePicker({ label, value, onChange, error }: ImagePickerProps)
     } catch {
       // permission denied or picker closed
     } finally {
-      setLoading(false);
+      setPicking(false);
     }
   };
 
   const takePhoto = async () => {
+    if (picking) return;
     try {
       const { status } = await ExpoImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") return;
 
-      setLoading(true);
+      setPicking(true);
       const result = await ExpoImagePicker.launchCameraAsync({
         allowsEditing: true,
         quality: 0.8,
@@ -54,25 +56,13 @@ export function ImagePicker({ label, value, onChange, error }: ImagePickerProps)
     } catch {
       // permission denied or camera unavailable
     } finally {
-      setLoading(false);
+      setPicking(false);
     }
   };
 
   const removeImage = () => {
     onChange(null);
   };
-
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        {label && <Text style={styles.label}>{label}</Text>}
-        <View style={styles.loadingBox}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Processing…</Text>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -84,7 +74,6 @@ export function ImagePicker({ label, value, onChange, error }: ImagePickerProps)
             source={{ uri: value }}
             style={styles.image}
             resizeMode="cover"
-            onError={() => onChange(null)}
           />
           <TouchableOpacity style={styles.removeButton} onPress={removeImage} activeOpacity={0.8}>
             <X size={16} color={COLORS.surface} />
@@ -96,9 +85,14 @@ export function ImagePicker({ label, value, onChange, error }: ImagePickerProps)
             style={[styles.pickerButton, error && styles.pickerError]}
             onPress={pickImage}
             activeOpacity={0.7}
+            disabled={picking}
           >
             <View style={styles.iconContainer}>
-              <ImageIcon size={24} color={COLORS.primary} />
+              {picking ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <ImageIcon size={24} color={COLORS.primary} />
+              )}
             </View>
             <Text style={styles.buttonText}>Gallery</Text>
           </TouchableOpacity>
@@ -106,9 +100,14 @@ export function ImagePicker({ label, value, onChange, error }: ImagePickerProps)
             style={[styles.pickerButton, error && styles.pickerError]}
             onPress={takePhoto}
             activeOpacity={0.7}
+            disabled={picking}
           >
             <View style={styles.iconContainer}>
-              <Camera size={24} color={COLORS.primary} />
+              {picking ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <Camera size={24} color={COLORS.primary} />
+              )}
             </View>
             <Text style={styles.buttonText}>Camera</Text>
           </TouchableOpacity>
@@ -185,21 +184,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     ...SHADOWS.small,
-  },
-  loadingBox: {
-    height: 80,
-    borderRadius: RADIUS.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceSecondary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
   },
   error: {
     fontSize: 12,

@@ -677,6 +677,7 @@
     "contactInvalid": "ଯୋଗାଯୋଗ ନମ୍ବର ଠିକ୍ ୧୦ ସଂଖ୍ୟା ହେବା ଉଚିତ",
     "photoRequired": "ଫଟୋ ଆବଶ୍ୟକ",
     "aadharRequired": "ଆଧାର କାର୍ଡ ଆବଶ୍ୟକ",
+    "duplicateError": "ଏହି ନାମ ଓ ଯୋଗାଯୋଗ ନମ୍ବରର ଗୁମସ୍ତା ପୂର୍ବରୁ ଅଛି।",
     "approval": {
       "pending": "ଅନୁମୋଦନ ଅପେକ୍ଷା",
       "approved": "ଅନୁମୋଦିତ",

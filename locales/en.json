@@ -1415,6 +1415,7 @@
     "contactInvalid": "Contact number must be exactly 10 digits",
     "photoRequired": "Photo is required",
     "aadharRequired": "Aadhaar card is required",
+    "duplicateError": "A Gumasta with this name and contact number already exists.",
     "approval": {
       "pending": "Pending Approval",
       "approved": "Approved",

@@ -118,6 +118,9 @@ export default function RegistrationScreen() {
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }));
     }
+    if (error) {
+      setError("");
+    }
   };
 
   const validateStep = (step: number): boolean => {

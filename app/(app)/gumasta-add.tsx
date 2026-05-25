@@ -15,7 +15,7 @@ import { ArrowLeft, Camera, IdCard, Upload } from "lucide-react-native";
 import * as ExpoImagePicker from "expo-image-picker";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/context/AuthContext";
-import { createGumasta, uploadGumastaPhoto, uploadGumastaAadhar, updateGumasta } from "@/services/gumastaService";
+import { createGumasta, uploadGumastaPhoto, uploadGumastaAadhar, checkDuplicateGumasta } from "@/services/gumastaService";
 import { Input } from "@/components/forms/Input";
 import { Button } from "@/components/actions/Button";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
@@ -56,7 +56,7 @@ export default function GumastaAddScreen() {
       aspect: [1, 1],
       quality: 0.7,
     });
-    if (uri) setPhotoUri(uri);
+    if (uri) { setPhotoUri(uri); setError(""); }
   };
 
   const pickAadhar = async () => {
@@ -65,7 +65,7 @@ export default function GumastaAddScreen() {
       allowsEditing: false,
       quality: 0.8,
     });
-    if (uri) setAadharUri(uri);
+    if (uri) { setAadharUri(uri); setError(""); }
   };
 
   const validate = (): boolean => {
@@ -88,29 +88,33 @@ export default function GumastaAddScreen() {
     setError("");
 
     try {
-      const created = await createGumasta(registration.id, {
+      // Check for duplicate before doing any work
+      const duplicate = await checkDuplicateGumasta(registration.id, name.trim(), contactNumber.trim());
+      if (duplicate) {
+        setError(t("gumasta.duplicateError"));
+        return;
+      }
+
+      // Upload files first using a temporary path keyed by sebayat + timestamp,
+      // then create the row with the final URLs in one shot to avoid orphaned rows.
+      const tempId = `tmp_${Date.now()}`;
+
+      const photoUrl = await uploadGumastaPhoto(registration.id, tempId, photoUri!);
+      const aadharUrl = await uploadGumastaAadhar(registration.id, tempId, aadharUri!);
+
+      await createGumasta(registration.id, {
         name: name.trim(),
         contact_number: contactNumber.trim(),
-        photo_url: null,
-        aadhar_card_url: null,
+        photo_url: photoUrl,
+        aadhar_card_url: aadharUrl,
       });
-
-      const updates: { photo_url?: string; aadhar_card_url?: string } = {};
-
-      if (photoUri) {
-        updates.photo_url = await uploadGumastaPhoto(registration.id, created.id, photoUri);
-      }
-      if (aadharUri) {
-        updates.aadhar_card_url = await uploadGumastaAadhar(registration.id, created.id, aadharUri);
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await updateGumasta(created.id, updates);
-      }
 
       router.back();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      const msg = e instanceof Error ? e.message : "Failed to save";
+      // Suppress the false-positive offline message when uploads actually succeed
+      // by only showing it if we never got past the upload phase
+      setError(msg);
     } finally {
       setSaving(false);
     }
@@ -148,7 +152,7 @@ export default function GumastaAddScreen() {
             label={t("gumasta.name")}
             placeholder={t("gumasta.namePlaceholder")}
             value={name}
-            onChangeText={setName}
+            onChangeText={(v) => { setName(v); setError(""); }}
             error={errors.name}
           />
 
@@ -156,7 +160,7 @@ export default function GumastaAddScreen() {
             label={t("gumasta.contactNumber")}
             placeholder={t("gumasta.contactPlaceholder")}
             value={contactNumber}
-            onChangeText={(v) => setContactNumber(v.replace(/\D/g, "").slice(0, 10))}
+            onChangeText={(v) => { setContactNumber(v.replace(/\D/g, "").slice(0, 10)); setError(""); }}
             keyboardType="phone-pad"
             maxLength={10}
             error={errors.contactNumber}

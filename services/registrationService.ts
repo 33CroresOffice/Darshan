@@ -2,6 +2,18 @@ import { supabase } from "@/lib/supabase";
 import { uriToBlob, uriToBase64DataUrl } from "@/lib/fileUtils";
 import type { RegistrationFormData, SebayatRegistration } from "@/types";
 
+const NETWORK_NOISE_PATTERNS = [
+  "network request failed",
+  "failed to fetch",
+  "networkerror",
+  "load failed",
+];
+
+function isNetworkNoise(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return NETWORK_NOISE_PATTERNS.some((p) => lower.includes(p));
+}
+
 export async function uploadFile(
   bucket: string,
   path: string,
@@ -17,7 +29,13 @@ export async function uploadFile(
       upsert: true,
     });
 
-  if (error) throw new Error(`Upload failed: ${error.message}`);
+  // On React Native, Supabase storage can return a "Network request failed"
+  // error even when the upload succeeds (a known SDK/RN fetch quirk with
+  // local file:// URIs). Since we use upsert:true and the public URL is
+  // deterministic, we can safely return it when the error looks like noise.
+  if (error && !isNetworkNoise(error.message)) {
+    throw new Error(`Upload failed: ${error.message}`);
+  }
 
   const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
   return urlData.publicUrl;

@@ -229,12 +229,18 @@ export default function HomeScreen() {
       );
       const finalPending = [...extraPending, ...serverPending];
 
+      // Compute the merged arrays (preserving optimistic gumasta_id when lock is
+      // held) and capture them so we can write the same data to disk.
+      let mergedToday = finalToday;
+      let mergedPending = finalPending;
+
       setTodayTickets((prev) => {
         let next = finalToday;
         if (mutationLock.current) {
           const optimistic = new Map(prev.map((t) => [t.id, t.gumasta_id]));
           next = finalToday.map((t) => ({ ...t, gumasta_id: optimistic.has(t.id) ? optimistic.get(t.id) ?? null : t.gumasta_id }));
         }
+        mergedToday = next;
         const prevSig = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
         const nextSig = next.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
         return prevSig === nextSig ? prev : next;
@@ -245,17 +251,20 @@ export default function HomeScreen() {
           const optimistic = new Map(prev.map((t) => [t.id, t.gumasta_id]));
           next = finalPending.map((t) => ({ ...t, gumasta_id: optimistic.has(t.id) ? optimistic.get(t.id) ?? null : t.gumasta_id }));
         }
+        mergedPending = next;
         const prevSig = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
         const nextSig = next.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
         return prevSig === nextSig ? prev : next;
       });
 
-      // Persist the deduped list — this evicts stale local_ entries whose
-      // entry_code is now covered by a real server record.
+      // Persist the merged (optimistic-aware) data so the correct gumasta
+      // assignments survive app restarts. Using mergedToday/mergedPending
+      // (not the raw server arrays) ensures any in-flight assignment is
+      // written to disk before the mutation lock is released.
       await Promise.all([
-        writeCache(CACHE_TODAY_KEY(registration.id, todayDate), finalToday),
-        writeCache(CACHE_PENDING_KEY(registration.id, todayDate), finalPending),
-        setCachedTickets(registration.id, todayDate, finalToday),
+        writeCache(CACHE_TODAY_KEY(registration.id, todayDate), mergedToday),
+        writeCache(CACHE_PENDING_KEY(registration.id, todayDate), mergedPending),
+        setCachedTickets(registration.id, todayDate, mergedToday),
       ]);
     } catch {
       // Network failed — cache was already painted above, nothing to do
@@ -382,9 +391,11 @@ export default function HomeScreen() {
 
   const handleBulkAssignGumasta = async (gumastaId: string) => {
     if (!registration?.id) return;
+    // Hold the mutation lock for the entire operation — RPC + re-fetch — so
+    // the optimistic gumasta_id is never overwritten by a concurrent loadTickets.
     mutationLock.current = true;
     if (mutationLockTimer.current) clearTimeout(mutationLockTimer.current);
-    mutationLockTimer.current = setTimeout(() => { mutationLock.current = false; }, 5000);
+    mutationLockTimer.current = null;
     setPendingTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: gumastaId })));
     setTodayTickets((prev) =>
       prev.map((tk) => (tk.status === "pending" ? { ...tk, gumasta_id: gumastaId } : tk))
@@ -392,9 +403,14 @@ export default function HomeScreen() {
     setBulkAssignModalVisible(false);
     try {
       await assignGumastaToAllPendingTickets(registration.id, gumastaId);
+      // Re-fetch so the server-confirmed gumasta_id is written to disk cache
+      // while the lock is still held.
+      await loadTickets();
     } catch {
       setPendingTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: undefined })));
       setTodayTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: undefined })));
+    } finally {
+      mutationLock.current = false;
     }
   };
 
@@ -772,7 +788,7 @@ export default function HomeScreen() {
                           onMutationStart={() => {
                             mutationLock.current = true;
                             if (mutationLockTimer.current) clearTimeout(mutationLockTimer.current);
-                            mutationLockTimer.current = setTimeout(() => { mutationLock.current = false; }, 5000);
+                            mutationLockTimer.current = null;
                           }}
                           onAssigned={(gId) => {
                             setPendingTickets((prev) =>
@@ -781,6 +797,12 @@ export default function HomeScreen() {
                             setTodayTickets((prev) =>
                               prev.map((tk) => tk.id === ticket.id ? { ...tk, gumasta_id: gId ?? undefined } : tk)
                             );
+                          }}
+                          onAssignComplete={async () => {
+                            // Re-fetch after the RPC resolves so the server-confirmed
+                            // gumasta_id is written to disk while the lock is still held.
+                            await loadTickets();
+                            mutationLock.current = false;
                           }}
                         />
                       ) : null}
