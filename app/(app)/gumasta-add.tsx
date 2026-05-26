@@ -40,7 +40,7 @@ async function pickImage(options: ExpoImagePicker.ImagePickerOptions): Promise<s
 export default function GumastaAddScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { registration } = useAuth();
+  const { user, registration } = useAuth();
   const [name, setName] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function GumastaAddScreen() {
   };
 
   const handleSave = async () => {
-    if (!validate() || !registration?.id) return;
+    if (!validate() || !registration?.id || !user?.id) return;
     setSaving(true);
     setError("");
 
@@ -99,8 +99,8 @@ export default function GumastaAddScreen() {
       // then create the row with the final URLs in one shot to avoid orphaned rows.
       const tempId = `tmp_${Date.now()}`;
 
-      const photoUrl = await uploadGumastaPhoto(registration.id, tempId, photoUri!);
-      const aadharUrl = await uploadGumastaAadhar(registration.id, tempId, aadharUri!);
+      const photoUrl = await uploadGumastaPhoto(user.id, tempId, photoUri!);
+      const aadharUrl = await uploadGumastaAadhar(user.id, tempId, aadharUri!);
 
       await createGumasta(registration.id, {
         name: name.trim(),

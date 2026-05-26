@@ -198,11 +198,11 @@ async function uploadToStorage(bucket: string, path: string, uri: string, errorP
 }
 
 export async function uploadGumastaPhoto(
-  sebayatId: string,
+  userId: string,
   gumastaId: string,
   uri: string
 ): Promise<string> {
-  const filePath = `gumastas/${sebayatId}/${gumastaId}.jpg`;
+  const filePath = `${userId}/gumastas/${gumastaId}.jpg`;
   await uploadToStorage("profile-photos", filePath, uri, "Photo upload failed");
   const { data } = supabase.storage.from("profile-photos").getPublicUrl(filePath);
   return data.publicUrl;
@@ -292,11 +292,11 @@ export async function superadminApproveGumasta(gumastaId: string): Promise<void>
 }
 
 export async function uploadGumastaAadhar(
-  sebayatId: string,
+  userId: string,
   gumastaId: string,
   uri: string
 ): Promise<string> {
-  const filePath = `gumastas/${sebayatId}/${gumastaId}_aadhar.jpg`;
+  const filePath = `${userId}/gumastas/${gumastaId}_aadhar.jpg`;
   await uploadToStorage("id-documents", filePath, uri, "Aadhaar upload failed");
   const { data } = supabase.storage.from("id-documents").getPublicUrl(filePath);
   return data.publicUrl;
