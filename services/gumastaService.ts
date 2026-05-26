@@ -1,6 +1,7 @@
+import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { normaliseError } from "@/lib/offline";
-import { uriToBlob } from "@/lib/fileUtils";
+import { uriToBlob, uriToBase64DataUrl } from "@/lib/fileUtils";
 import type { Gumasta, GateEntry, GumastaApproval, GumastaVoteSummary } from "@/types/database";
 
 export async function getGumastasBySebayat(sebayatId: string): Promise<Gumasta[]> {
@@ -173,25 +174,36 @@ export async function getTicketsByGumasta(
   return data ?? [];
 }
 
+async function uploadToStorage(bucket: string, path: string, uri: string, errorPrefix: string): Promise<void> {
+  let uploadError: string | null = null;
+
+  if (Platform.OS !== "web") {
+    const dataUrl = await uriToBase64DataUrl(uri);
+    const [header, base64Data] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:([^;]+)/);
+    const contentType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const byteChars = atob(base64Data);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    const { error } = await supabase.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
+    if (error) uploadError = error.message;
+  } else {
+    const blob = await uriToBlob(uri);
+    const contentType = blob.type || "image/jpeg";
+    const { error } = await supabase.storage.from(bucket).upload(path, blob, { contentType, upsert: true });
+    if (error) uploadError = error.message;
+  }
+
+  if (uploadError) throw new Error(`${errorPrefix}: ${uploadError}`);
+}
+
 export async function uploadGumastaPhoto(
   sebayatId: string,
   gumastaId: string,
   uri: string
 ): Promise<string> {
-  const blob = await uriToBlob(uri);
-  const mimeType = blob.type || "image/jpeg";
-  const fileExt = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
-  const filePath = `gumastas/${sebayatId}/${gumastaId}.${fileExt}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from("profile-photos")
-    .upload(filePath, blob, {
-      contentType: mimeType,
-      upsert: true,
-    });
-
-  if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`);
-
+  const filePath = `gumastas/${sebayatId}/${gumastaId}.jpg`;
+  await uploadToStorage("profile-photos", filePath, uri, "Photo upload failed");
   const { data } = supabase.storage.from("profile-photos").getPublicUrl(filePath);
   return data.publicUrl;
 }
@@ -284,20 +296,8 @@ export async function uploadGumastaAadhar(
   gumastaId: string,
   uri: string
 ): Promise<string> {
-  const blob = await uriToBlob(uri);
-  const mimeType = blob.type || "image/jpeg";
-  const fileExt = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
-  const filePath = `gumastas/${sebayatId}/${gumastaId}_aadhar.${fileExt}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from("id-documents")
-    .upload(filePath, blob, {
-      contentType: mimeType,
-      upsert: true,
-    });
-
-  if (uploadError) throw new Error(`Aadhaar upload failed: ${uploadError.message}`);
-
+  const filePath = `gumastas/${sebayatId}/${gumastaId}_aadhar.jpg`;
+  await uploadToStorage("id-documents", filePath, uri, "Aadhaar upload failed");
   const { data } = supabase.storage.from("id-documents").getPublicUrl(filePath);
   return data.publicUrl;
 }

@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { uriToBlob, uriToBase64DataUrl } from "@/lib/fileUtils";
 import type { RegistrationFormData, SebayatRegistration } from "@/types";
@@ -19,22 +20,35 @@ export async function uploadFile(
   path: string,
   uri: string
 ): Promise<string> {
-  const blob = await uriToBlob(uri);
-  const contentType = blob.type || "image/jpeg";
+  let uploadError: Error | null = null;
 
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(path, blob, {
-      contentType,
-      upsert: true,
-    });
+  if (Platform.OS !== "web") {
+    // On native, blob uploads fail silently through the Supabase SDK's fetch layer.
+    // Convert to base64 and upload as a Uint8Array to bypass this entirely.
+    const dataUrl = await uriToBase64DataUrl(uri);
+    const [header, base64Data] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:([^;]+)/);
+    const contentType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const byteChars = atob(base64Data);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
 
-  // On React Native, Supabase storage can return a "Network request failed"
-  // error even when the upload succeeds (a known SDK/RN fetch quirk with
-  // local file:// URIs). Since we use upsert:true and the public URL is
-  // deterministic, we can safely return it when the error looks like noise.
-  if (error && !isNetworkNoise(error.message)) {
-    throw new Error(`Upload failed: ${error.message}`);
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, bytes, { contentType, upsert: true });
+
+    if (error) uploadError = new Error(error.message);
+  } else {
+    const blob = await uriToBlob(uri);
+    const contentType = blob.type || "image/jpeg";
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, blob, { contentType, upsert: true });
+    if (error) uploadError = new Error(error.message);
+  }
+
+  if (uploadError && !isNetworkNoise(uploadError.message)) {
+    throw new Error(`Upload failed: ${uploadError.message}`);
   }
 
   const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
@@ -78,7 +92,7 @@ export async function submitRegistration(
   }
 
   let aadharCardUrl: string | null = null;
-  if (formData.aadharCardUri && !formData.aadharCardUri.startsWith("pdf-placeholder")) {
+  if (formData.aadharCardUri) {
     const isPdf = getAadharContentType(formData.aadharCardUri) === "application/pdf";
     aadharCardUrl = await uploadFile(
       "id-documents",
@@ -173,12 +187,8 @@ export async function resubmitRegistration(
     approved_at: null,
   };
 
-  // Aadhar card: upload if new file selected (not already a URL and not a placeholder)
-  if (
-    formData.aadharCardUri &&
-    !formData.aadharCardUri.startsWith("http") &&
-    !formData.aadharCardUri.startsWith("pdf-placeholder")
-  ) {
+  // Aadhar card: upload if new file selected (not already an uploaded URL)
+  if (formData.aadharCardUri && !formData.aadharCardUri.startsWith("http")) {
     const isPdf = getAadharContentType(formData.aadharCardUri) === "application/pdf";
     updates.aadhar_card_url = await uploadFile(
       "id-documents",

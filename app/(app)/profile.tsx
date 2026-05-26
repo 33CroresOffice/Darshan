@@ -11,18 +11,16 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Pencil, X, Check, CircleAlert, LogOut, Camera, IdCard, Bell, FileText, Heart, User } from "lucide-react-native";
+import { Pencil, X, Check, LogOut, Camera, IdCard, Bell, FileText, Heart, User } from "lucide-react-native";
 import * as ExpoImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
-import { Button } from "@/components/actions/Button";
 import { Input } from "@/components/forms/Input";
 import { Dropdown } from "@/components/forms/Dropdown";
-import { DatePicker } from "@/components/forms/DatePicker";
 import { useTranslation } from "react-i18next";
 import { signOut } from "@/services/authService";
-import { updateAddress, updateDateOfBirth, updateProfilePhoto } from "@/services/registrationService";
+import { updateAddress, updateProfilePhoto } from "@/services/registrationService";
 import { getCategories } from "@/services/categoryService";
 import { connectivity } from "@/lib/offline";
 import { LanguagePicker } from "@/components/ui/LanguagePicker";
@@ -34,7 +32,6 @@ export default function ProfileScreen() {
   const { registration, profile, user, refreshRegistration } = useAuth();
   const { unreadCount } = useNotifications();
   const [isEditingAddress, setIsEditingAddress] = useState(false);
-  const [isEditingDob, setIsEditingDob] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [error, setError] = useState("");
@@ -45,7 +42,6 @@ export default function ProfileScreen() {
     state: "",
     pincode: "",
   });
-  const [dobForm, setDobForm] = useState<Date | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ uri: string; title: string } | null>(null);
@@ -58,7 +54,6 @@ export default function ProfileScreen() {
         state: registration.permanent_state || registration.state || "",
         pincode: registration.permanent_pincode || registration.pincode || "",
       });
-      setDobForm(registration.date_of_birth ? new Date(registration.date_of_birth) : null);
     }
   }, [registration]);
 
@@ -102,25 +97,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSaveDob = async () => {
-    if (!dobForm || !registration) return;
-    if (!connectivity.isOnline()) {
-      setError(t("app.profile.offlineMutationError"));
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      await updateDateOfBirth(registration.id, dobForm);
-      await refreshRegistration();
-      setIsEditingDob(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("app.profile.failedDob"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleCancelAddressEdit = () => {
     setAddressForm({
       address: registration?.permanent_address || registration?.address || "",
@@ -131,12 +107,6 @@ export default function ProfileScreen() {
     setErrors({});
     setError("");
     setIsEditingAddress(false);
-  };
-
-  const handleCancelDobEdit = () => {
-    setDobForm(registration?.date_of_birth ? new Date(registration.date_of_birth) : null);
-    setError("");
-    setIsEditingDob(false);
   };
 
   const handlePickPhoto = async () => {
@@ -240,17 +210,14 @@ export default function ProfileScreen() {
           {/* Profile Card */}
           <View style={styles.profileCard}>
             <View style={styles.avatarContainer}>
-              {registration?.photo_url ? (
-                <TouchableOpacity onPress={() => openImagePreview(registration.photo_url, t("app.profile.photoLabel"))}>
-                  <Image source={{ uri: registration.photo_url }} style={styles.avatar} />
-                </TouchableOpacity>
-              ) : (
-                <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                  <Text style={styles.avatarText}>
-                    {registration?.full_name ? getInitials(registration.full_name) : "S"}
-                  </Text>
-                </View>
-              )}
+              <AvatarImage
+                photoUrl={registration?.photo_url ?? null}
+                fullName={registration?.full_name ?? null}
+                style={styles.avatar}
+                placeholderStyle={styles.avatarPlaceholder}
+                textStyle={styles.avatarText}
+                onPress={registration?.photo_url ? () => openImagePreview(registration.photo_url, t("app.profile.photoLabel")) : undefined}
+              />
               <TouchableOpacity
                 style={styles.editPhotoButton}
                 onPress={handlePickPhoto}
@@ -300,17 +267,6 @@ export default function ProfileScreen() {
                 <User size={16} color={COLORS.primary} />
                 <Text style={styles.sectionTitle}>{t("app.profile.personalInfo")}</Text>
               </View>
-              {!isEditingDob && (
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => setIsEditingDob(true)}
-                >
-                  <Pencil size={14} color={COLORS.primary} />
-                  <Text style={styles.editButtonText}>
-                    {registration?.date_of_birth ? t("common.edit") : t("common.add")}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
             <View style={styles.card}>
               <InfoRow label={t("app.profile.fullName")} value={registration?.full_name} />
@@ -331,46 +287,6 @@ export default function ProfileScreen() {
                   <View style={styles.divider} />
                   <InfoRow label={t("app.profile.nijog")} value={categoryNames} />
                 </>
-              )}
-              <View style={styles.divider} />
-              {isEditingDob ? (
-                <View style={styles.editSection}>
-                  <DatePicker
-                    label={t("app.profile.dateOfBirth")}
-                    value={dobForm}
-                    onChange={setDobForm}
-                    maxDate={new Date()}
-                  />
-                  <View style={styles.editActions}>
-                    <TouchableOpacity style={styles.cancelButton} onPress={handleCancelDobEdit}>
-                      <X size={18} color={COLORS.textSecondary} />
-                      <Text style={styles.cancelButtonText}>{t("common.cancel")}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.saveButton, (!dobForm || saving) && styles.saveButtonDisabled]}
-                      onPress={handleSaveDob}
-                      disabled={saving || !dobForm}
-                    >
-                      <Check size={18} color={COLORS.surface} />
-                      <Text style={styles.saveButtonText}>
-                        {saving ? t("common.saving") : t("common.save")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <InfoRow
-                  label={t("app.profile.dateOfBirth")}
-                  value={
-                    registration?.date_of_birth
-                      ? new Date(registration.date_of_birth).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })
-                      : undefined
-                  }
-                />
               )}
             </View>
           </View>
@@ -504,18 +420,14 @@ export default function ProfileScreen() {
                       )}
                     </View>
                   </View>
-                  {registration?.aadhar_card_url ? (
-                    <TouchableOpacity onPress={() => openImagePreview(registration.aadhar_card_url!, t("app.profile.aadhaarCard"))}>
-                      <Image
-                        source={{ uri: registration.aadhar_card_url }}
-                        style={styles.documentImage}
-                      />
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.noDocumentRow}>
-                      <Text style={styles.noDocumentText}>{t("app.profile.noDocumentImage")}</Text>
-                    </View>
-                  )}
+                  <DocumentImage
+                    uri={registration?.aadhar_card_url ?? null}
+                    imageStyle={styles.documentImage}
+                    noImageStyle={styles.noDocumentRow}
+                    noImageTextStyle={styles.noDocumentText}
+                    noImageText={t("app.profile.noDocumentImage")}
+                    onPress={registration?.aadhar_card_url ? () => openImagePreview(registration.aadhar_card_url!, t("app.profile.aadhaarCard")) : undefined}
+                  />
                 </View>
               )}
 
@@ -533,53 +445,17 @@ export default function ProfileScreen() {
                       )}
                     </View>
                   </View>
-                  {registration?.temple_health_card_url ? (
-                    <TouchableOpacity onPress={() => openImagePreview(registration.temple_health_card_url!, t("app.profile.templeHealthCard"))}>
-                      <Image
-                        source={{ uri: registration.temple_health_card_url }}
-                        style={styles.documentImage}
-                      />
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.noDocumentRow}>
-                      <Text style={styles.noDocumentText}>{t("app.profile.noDocumentImage")}</Text>
-                    </View>
-                  )}
+                  <DocumentImage
+                    uri={registration?.temple_health_card_url ?? null}
+                    imageStyle={styles.documentImage}
+                    noImageStyle={styles.noDocumentRow}
+                    noImageTextStyle={styles.noDocumentText}
+                    noImageText={t("app.profile.noDocumentImage")}
+                    onPress={registration?.temple_health_card_url ? () => openImagePreview(registration.temple_health_card_url!, t("app.profile.templeHealthCard")) : undefined}
+                  />
                 </View>
               )}
 
-              {/* Temple ID Card */}
-              <View style={styles.documentCard}>
-                <View style={styles.documentHeader}>
-                  <View style={styles.documentIcon}>
-                    <IdCard size={20} color={COLORS.primary} />
-                  </View>
-                  <View style={styles.documentHeaderInfo}>
-                    <Text style={styles.documentLabel}>{t("app.profile.templeIdCard")}</Text>
-                    {registration?.temple_id_card_number && (
-                      <Text style={styles.documentNumber}>{registration.temple_id_card_number}</Text>
-                    )}
-                  </View>
-                </View>
-                {registration?.temple_id_card_url ? (
-                  <TouchableOpacity onPress={() => openImagePreview(registration.temple_id_card_url!, t("app.profile.templeIdCard"))}>
-                    <Image
-                      source={{ uri: registration.temple_id_card_url }}
-                      style={styles.documentImage}
-                    />
-                  </TouchableOpacity>
-                ) : (
-                  <View style={styles.uploadCard}>
-                    <View style={styles.uploadContent}>
-                      <View style={styles.uploadIconContainer}>
-                        <IdCard size={24} color={COLORS.primary} />
-                      </View>
-                      <Text style={styles.uploadTitle}>{t("app.profile.noTempleIdCard")}</Text>
-                      <Text style={styles.uploadSubtitle}>{t("app.profile.templeIdCardNotAssigned")}</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
 
             </View>
           </View>
@@ -619,6 +495,96 @@ export default function ProfileScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function DocumentImage({
+  uri,
+  imageStyle,
+  noImageStyle,
+  noImageTextStyle,
+  noImageText,
+  onPress,
+}: {
+  uri: string | null;
+  imageStyle: object;
+  noImageStyle: object;
+  noImageTextStyle: object;
+  noImageText: string;
+  onPress?: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => { setFailed(false); }, [uri]);
+
+  const resolvedStyle = containerWidth > 0
+    ? [imageStyle, { width: containerWidth }]
+    : imageStyle;
+
+  return (
+    <View
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+      style={{ alignSelf: "stretch" }}
+    >
+      {uri && !failed && containerWidth > 0 ? (
+        <TouchableOpacity onPress={onPress} disabled={!onPress} activeOpacity={onPress ? 0.8 : 1}>
+          <Image
+            key={uri}
+            source={{ uri }}
+            style={resolvedStyle}
+            resizeMode="cover"
+            onError={() => setFailed(true)}
+          />
+        </TouchableOpacity>
+      ) : uri && !failed ? null : (
+        <View style={noImageStyle}>
+          <Text style={noImageTextStyle}>{noImageText}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function AvatarImage({
+  photoUrl,
+  fullName,
+  style,
+  placeholderStyle,
+  textStyle,
+  onPress,
+}: {
+  photoUrl: string | null;
+  fullName: string | null;
+  style: object;
+  placeholderStyle: object;
+  textStyle: object;
+  onPress?: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [photoUrl]);
+  const getInitialsLocal = (name: string) =>
+    name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+
+  if (photoUrl && !failed) {
+    const content = (
+      <Image
+        key={photoUrl}
+        source={{ uri: photoUrl, cache: "reload" }}
+        style={style}
+        resizeMode="cover"
+        onError={() => setFailed(true)}
+      />
+    );
+    return onPress ? (
+      <TouchableOpacity onPress={onPress}>{content}</TouchableOpacity>
+    ) : content;
+  }
+  return (
+    <View style={[style, placeholderStyle]}>
+      <Text style={textStyle}>
+        {fullName ? getInitialsLocal(fullName) : "S"}
+      </Text>
+    </View>
   );
 }
 

@@ -190,17 +190,15 @@ export default function SupervisorProfileScreen() {
       >
         <View style={styles.profileCard}>
           <View style={styles.avatarContainer}>
-            {registration?.photo_url ? (
-              <TouchableOpacity onPress={() => openImagePreview(registration.photo_url, "Profile Photo")}>
-                <Image source={{ uri: registration.photo_url }} style={styles.avatar} />
-              </TouchableOpacity>
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <Text style={styles.avatarText}>
-                  {registration?.full_name ? getInitials(registration.full_name) : "S"}
-                </Text>
-              </View>
-            )}
+            <AvatarWithFallback
+              photoUrl={registration?.photo_url ?? null}
+              fullName={registration?.full_name ?? null}
+              style={styles.avatar}
+              placeholderStyle={styles.avatarPlaceholder}
+              textStyle={styles.avatarText}
+              onPress={registration?.photo_url ? () => openImagePreview(registration.photo_url, "Profile Photo") : undefined}
+              getInitials={getInitials}
+            />
             <TouchableOpacity
               style={styles.editPhotoButton}
               onPress={handlePickPhoto}
@@ -494,6 +492,44 @@ export default function SupervisorProfileScreen() {
         </View>
       </Modal>
     </KeyboardAvoidingView>
+  );
+}
+
+function AvatarWithFallback({
+  photoUrl,
+  fullName,
+  style,
+  placeholderStyle,
+  textStyle,
+  onPress,
+  getInitials,
+}: {
+  photoUrl: string | null;
+  fullName: string | null;
+  style: object;
+  placeholderStyle: object;
+  textStyle: object;
+  onPress?: () => void;
+  getInitials: (name: string) => string;
+}) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [photoUrl]);
+  if (photoUrl && !failed) {
+    const img = (
+      <Image
+        key={photoUrl}
+        source={{ uri: photoUrl, cache: "reload" }}
+        style={style}
+        resizeMode="cover"
+        onError={() => setFailed(true)}
+      />
+    );
+    return onPress ? <TouchableOpacity onPress={onPress}>{img}</TouchableOpacity> : img;
+  }
+  return (
+    <View style={[style, placeholderStyle]}>
+      <Text style={textStyle}>{fullName ? getInitials(fullName) : "S"}</Text>
+    </View>
   );
 }
 

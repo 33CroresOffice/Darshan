@@ -16,16 +16,11 @@ function isPdf(uri: string | null): boolean {
   return (
     uri.endsWith(".pdf") ||
     uri.includes("application/pdf") ||
-    uri.startsWith("data:application/pdf") ||
-    uri.startsWith("pdf-placeholder://")
+    uri.startsWith("data:application/pdf")
   );
 }
 
 function getFileName(uri: string): string {
-  if (uri.startsWith("pdf-placeholder://")) {
-    const name = uri.replace("pdf-placeholder://", "");
-    return name || "Document.pdf";
-  }
   const parts = uri.split("/");
   const last = parts[parts.length - 1];
   return last.split("?")[0] || "file";
@@ -78,12 +73,18 @@ export function FilePicker({ label, value, onChange, error }: FilePickerProps) {
       };
       input.click();
     } else {
-      // On native, expo-document-picker is not in deps.
-      // Use a unique placeholder URI that embeds a timestamp so the parent
-      // can distinguish "user chose PDF" from "no file". The upload service
-      // skips placeholder URIs — but we still mark the field as filled so
-      // validation passes and the user sees a "Selected" confirmation.
-      onChange(`pdf-placeholder://${Date.now()}_aadhar.pdf`);
+      // expo-document-picker is not in deps; open the image library so the
+      // user can select a photo of their document from their gallery.
+      const { status } = await ExpoImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") return;
+      const result = await ExpoImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.85,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        onChange(result.assets[0].uri);
+      }
     }
   };
 
