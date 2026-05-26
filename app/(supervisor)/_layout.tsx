@@ -111,7 +111,7 @@ function GlobalHeader({ sync }: { sync: ReturnType<typeof useSupervisorSync> }) 
 function SupervisorTabs() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = 60 + insets.bottom;
+  const bottomPad = Math.max(insets.bottom, 16);
   return (
       <Tabs
         screenOptions={{
@@ -125,8 +125,8 @@ function SupervisorTabs() {
             borderTopColor: COLORS.border,
             backgroundColor: COLORS.surface,
             paddingTop: 6,
-            paddingBottom: insets.bottom + 4,
-            height: tabBarHeight,
+            paddingBottom: bottomPad,
+            height: 70 + bottomPad,
             paddingHorizontal: 4,
           },
           tabBarLabelStyle: {
