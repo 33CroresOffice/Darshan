@@ -257,11 +257,6 @@ export default function ReviewScreen() {
                 oldValue={oldData.temple_health_card_id}
                 newValue={registration.temple_health_card_id}
               />
-              <DiffRow
-                label="Temple ID Card No."
-                oldValue={oldData.temple_id_card_number}
-                newValue={registration.temple_id_card_number}
-              />
               {oldData.temple_health_card_url !== registration.temple_health_card_url && (
                 <View style={styles.diffImageRow}>
                   <Text style={styles.diffLabel}>Temple Health Card Image</Text>
@@ -294,38 +289,6 @@ export default function ReviewScreen() {
                   </View>
                 </View>
               )}
-              {oldData.temple_id_card_url !== registration.temple_id_card_url && (
-                <View style={styles.diffImageRow}>
-                  <Text style={styles.diffLabel}>Temple ID Card Image</Text>
-                  <View style={styles.diffImages}>
-                    {oldData.temple_id_card_url ? (
-                      <TouchableOpacity style={styles.diffImageBox} onPress={() => setEnlargedImage(oldData.temple_id_card_url!)}>
-                        <Image source={{ uri: oldData.temple_id_card_url }} style={styles.diffImage} resizeMode="cover" />
-                        <Text style={styles.diffImageLabel}>Previous</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.diffImageBox}>
-                        <View style={styles.diffImageMissing}><Text style={styles.diffImageMissingText}>None</Text></View>
-                        <Text style={styles.diffImageLabel}>Previous</Text>
-                      </View>
-                    )}
-                    <View style={styles.diffArrow}>
-                      <ArrowRight size={16} color={COLORS.textMuted} />
-                    </View>
-                    {registration.temple_id_card_url ? (
-                      <TouchableOpacity style={styles.diffImageBox} onPress={() => setEnlargedImage(registration.temple_id_card_url!)}>
-                        <Image source={{ uri: registration.temple_id_card_url }} style={styles.diffImage} resizeMode="cover" />
-                        <Text style={[styles.diffImageLabel, styles.diffImageLabelNew]}>Updated</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.diffImageBox}>
-                        <View style={styles.diffImageMissing}><Text style={styles.diffImageMissingText}>Removed</Text></View>
-                        <Text style={[styles.diffImageLabel, styles.diffImageLabelNew]}>Updated</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              )}
             </View>
           </View>
         )}
@@ -334,10 +297,13 @@ export default function ReviewScreen() {
           <Text style={styles.sectionTitle}>Registration Details</Text>
           <View style={styles.card}>
             <InfoRow label="Full Name" value={registration.full_name} />
+            <InfoRow label="Father's Name" value={registration.father_name || "-"} />
+            <InfoRow label="Age" value={registration.age != null ? String(registration.age) : "-"} />
             <InfoRow label="Mobile Number" value={registration.phone_number || "-"} />
-            <InfoRow label="Nijog" value={registration.category?.name || "-"} />
+            <InfoRow label="Nijog / Category" value={registration.category?.name || "-"} />
+            <InfoRow label="Allotment Number" value={registration.allotment_number || "-"} />
+            <InfoRow label="Aadhaar Number" value={registration.aadhar_number || "-"} />
             <InfoRow label="Temple Health Card ID" value={registration.temple_health_card_id || "-"} />
-            <InfoRow label="Temple ID Card No." value={registration.temple_id_card_number || "-"} />
           </View>
         </View>
 
@@ -366,15 +332,15 @@ export default function ReviewScreen() {
               <Text style={styles.documentMissingText}>No temple health card uploaded</Text>
             </View>
           )}
-          {registration.temple_id_card_url ? (
+          {registration.aadhar_card_url ? (
             <TouchableOpacity
               style={[styles.documentContainer, { marginTop: 12 }]}
-              onPress={() => setEnlargedImage(registration.temple_id_card_url!)}
+              onPress={() => setEnlargedImage(registration.aadhar_card_url!)}
             >
-              <Text style={styles.documentLabel}>Temple ID Card</Text>
+              <Text style={styles.documentLabel}>Aadhaar Card</Text>
               <View style={styles.documentWrapper}>
                 <Image
-                  source={{ uri: registration.temple_id_card_url }}
+                  source={{ uri: registration.aadhar_card_url }}
                   style={styles.documentImage}
                   resizeMode="contain"
                 />
@@ -384,7 +350,11 @@ export default function ReviewScreen() {
                 </View>
               </View>
             </TouchableOpacity>
-          ) : null}
+          ) : (
+            <View style={[styles.documentMissing, { marginTop: 12 }]}>
+              <Text style={styles.documentMissingText}>No Aadhaar card uploaded</Text>
+            </View>
+          )}
         </View>
 
         {voteSummary && (

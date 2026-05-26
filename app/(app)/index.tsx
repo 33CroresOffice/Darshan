@@ -51,9 +51,9 @@ import { syncAllDataLocally } from "@/services/backgroundSyncService";
 import { supabase } from "@/lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { connectivity, normaliseError, saveCachedSlots, loadLastSyncTime, setCachedTickets, getCachedTickets } from "@/lib/offline";
-import { getActiveGumastasBySebayat, assignGumastaToAllPendingTickets } from "@/services/gumastaService";
+import { getActiveGumastasBySebayat } from "@/services/gumastaService";
 import { isGumastaEnabledForSebayat } from "@/services/settingsService";
-import { GumastaAssignButton } from "@/components/tickets/GumastaAssignButton";
+import { useRouter } from "expo-router";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { SebayatQuota, GateEntry, SlotQuota, EntryMode, Gumasta } from "@/types/database";
 
@@ -77,6 +77,7 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const ln = useLocalizedNumber();
   const slotName = useSlotName();
+  const router = useRouter();
   const { registration, profile, refreshRegistration } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [quota, setQuota] = useState<SebayatQuota | null>(null);
@@ -133,7 +134,6 @@ export default function HomeScreen() {
   const [isOnline, setIsOnline] = useState(() => connectivity.isOnline());
   const [gumastas, setGumastas] = useState<Gumasta[]>([]);
   const [gumastaEnabled, setGumastaEnabled] = useState(false);
-  const [bulkAssignModalVisible, setBulkAssignModalVisible] = useState(false);
 
   const loadQuota = useCallback(async () => {
     if (!registration?.id) return;
@@ -182,11 +182,9 @@ export default function HomeScreen() {
     const cachedMerged = Array.from(mergedMap.values())
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
-    // Paint cache immediately (stale-while-revalidate), but only when:
-    //  - not in a gumasta mutation (would overwrite optimistic state)
-    //  - cache has tickets that differ from current state (avoids pointless re-renders)
+    // Paint cache immediately (stale-while-revalidate)
     if (callId !== ticketCallId.current) return;
-    if (cachedMerged.length > 0 && !mutationLock.current) {
+    if (cachedMerged.length > 0) {
       setTodayTickets((prev) => {
         const prevIds = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
         const nextIds = cachedMerged.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
@@ -229,42 +227,21 @@ export default function HomeScreen() {
       );
       const finalPending = [...extraPending, ...serverPending];
 
-      // Compute the merged arrays (preserving optimistic gumasta_id when lock is
-      // held) and capture them so we can write the same data to disk.
-      let mergedToday = finalToday;
-      let mergedPending = finalPending;
-
       setTodayTickets((prev) => {
-        let next = finalToday;
-        if (mutationLock.current) {
-          const optimistic = new Map(prev.map((t) => [t.id, t.gumasta_id]));
-          next = finalToday.map((t) => ({ ...t, gumasta_id: optimistic.has(t.id) ? optimistic.get(t.id) ?? null : t.gumasta_id }));
-        }
-        mergedToday = next;
         const prevSig = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
-        const nextSig = next.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
-        return prevSig === nextSig ? prev : next;
+        const nextSig = finalToday.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        return prevSig === nextSig ? prev : finalToday;
       });
       setPendingTickets((prev) => {
-        let next = finalPending;
-        if (mutationLock.current) {
-          const optimistic = new Map(prev.map((t) => [t.id, t.gumasta_id]));
-          next = finalPending.map((t) => ({ ...t, gumasta_id: optimistic.has(t.id) ? optimistic.get(t.id) ?? null : t.gumasta_id }));
-        }
-        mergedPending = next;
         const prevSig = prev.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
-        const nextSig = next.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
-        return prevSig === nextSig ? prev : next;
+        const nextSig = finalPending.map((t) => t.id + t.status + (t.gumasta_id ?? "")).join(",");
+        return prevSig === nextSig ? prev : finalPending;
       });
 
-      // Persist the merged (optimistic-aware) data so the correct gumasta
-      // assignments survive app restarts. Using mergedToday/mergedPending
-      // (not the raw server arrays) ensures any in-flight assignment is
-      // written to disk before the mutation lock is released.
       await Promise.all([
-        writeCache(CACHE_TODAY_KEY(registration.id, todayDate), mergedToday),
-        writeCache(CACHE_PENDING_KEY(registration.id, todayDate), mergedPending),
-        setCachedTickets(registration.id, todayDate, mergedToday),
+        writeCache(CACHE_TODAY_KEY(registration.id, todayDate), finalToday),
+        writeCache(CACHE_PENDING_KEY(registration.id, todayDate), finalPending),
+        setCachedTickets(registration.id, todayDate, finalToday),
       ]);
     } catch {
       // Network failed — cache was already painted above, nothing to do
@@ -338,8 +315,6 @@ export default function HomeScreen() {
   }, []);
 
   const realtimeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mutationLock = useRef(false);
-  const mutationLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!registration?.id) return;
@@ -350,17 +325,8 @@ export default function HomeScreen() {
         schema: "public",
         table: "gate_entries",
         filter: `sebayat_id=eq.${registration.id}`,
-      }, (payload: any) => {
+      }, () => {
         if (!connectivity.isOnline()) return;
-        if (mutationLock.current) return;
-        // Skip if only gumasta_id changed — we handle that optimistically
-        const old = payload?.old ?? {};
-        const next = payload?.new ?? {};
-        const onlyGumastaChanged =
-          Object.keys({ ...old, ...next }).every(
-            (k) => k === "gumasta_id" || k === "updated_at" || old[k] === next[k]
-          );
-        if (onlyGumastaChanged) return;
         if (realtimeDebounce.current) clearTimeout(realtimeDebounce.current);
         realtimeDebounce.current = setTimeout(() => {
           loadQuota();
@@ -387,31 +353,6 @@ export default function HomeScreen() {
     setRefreshing(true);
     await Promise.all([refreshRegistration(), loadQuota(), loadTickets(), loadSlots()]);
     setRefreshing(false);
-  };
-
-  const handleBulkAssignGumasta = async (gumastaId: string) => {
-    if (!registration?.id) return;
-    // Hold the mutation lock for the entire operation — RPC + re-fetch — so
-    // the optimistic gumasta_id is never overwritten by a concurrent loadTickets.
-    mutationLock.current = true;
-    if (mutationLockTimer.current) clearTimeout(mutationLockTimer.current);
-    mutationLockTimer.current = null;
-    setPendingTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: gumastaId })));
-    setTodayTickets((prev) =>
-      prev.map((tk) => (tk.status === "pending" ? { ...tk, gumasta_id: gumastaId } : tk))
-    );
-    setBulkAssignModalVisible(false);
-    try {
-      await assignGumastaToAllPendingTickets(registration.id, gumastaId);
-      // Re-fetch so the server-confirmed gumasta_id is written to disk cache
-      // while the lock is still held.
-      await loadTickets();
-    } catch {
-      setPendingTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: undefined })));
-      setTodayTickets((prev) => prev.map((tk) => ({ ...tk, gumasta_id: undefined })));
-    } finally {
-      mutationLock.current = false;
-    }
   };
 
   const selectedSlotQuota = slotQuotas.find((q) => q.slot.id === selectedSlotId) ?? null;
@@ -730,14 +671,14 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>{t("app.home.activeTickets")}</Text>
-              {gumastaEnabled && gumastas.length > 0 && pendingTickets.some((tk) => tk.status === "pending") ? (
+              {gumastaEnabled && (
                 <TouchableOpacity
-                  style={styles.bulkAssignBtn}
-                  onPress={() => setBulkAssignModalVisible(true)}
+                  style={styles.assignGumastaBtn}
+                  onPress={() => router.push("/(app)/assign-gumasta")}
                 >
-                  <Text style={styles.bulkAssignBtnText}>{t("gumasta.assignToAll")}</Text>
+                  <Text style={styles.assignGumastaBtnText}>{t("gumasta.assignGumasta")}</Text>
                 </TouchableOpacity>
-              ) : null}
+              )}
             </View>
             {pendingTickets.map((ticket) => {
               const expired = isTicketExpired(ticket);
@@ -778,33 +719,12 @@ export default function HomeScreen() {
                           </Text>
                         </View>
                       )}
-                      {gumastaEnabled && !expired ? (
-                        <GumastaAssignButton
-                          ticketId={ticket.id}
-                          currentGumastaId={ticket.gumasta_id ?? null}
-                          currentGumastaName={gumastas.find((g) => g.id === ticket.gumasta_id)?.name ?? null}
-                          currentGumastaPhoto={gumastas.find((g) => g.id === ticket.gumasta_id)?.photo_url ?? null}
-                          gumastas={gumastas}
-                          onMutationStart={() => {
-                            mutationLock.current = true;
-                            if (mutationLockTimer.current) clearTimeout(mutationLockTimer.current);
-                            mutationLockTimer.current = null;
-                          }}
-                          onAssigned={(gId) => {
-                            setPendingTickets((prev) =>
-                              prev.map((tk) => tk.id === ticket.id ? { ...tk, gumasta_id: gId ?? undefined } : tk)
-                            );
-                            setTodayTickets((prev) =>
-                              prev.map((tk) => tk.id === ticket.id ? { ...tk, gumasta_id: gId ?? undefined } : tk)
-                            );
-                          }}
-                          onAssignComplete={async () => {
-                            // Re-fetch after the RPC resolves so the server-confirmed
-                            // gumasta_id is written to disk while the lock is still held.
-                            await loadTickets();
-                            mutationLock.current = false;
-                          }}
-                        />
+                      {gumastaEnabled && ticket.gumasta_id ? (
+                        <View style={styles.gumastaLabel}>
+                          <Text style={styles.gumastaLabelText} numberOfLines={1}>
+                            {gumastas.find((g) => g.id === ticket.gumasta_id)?.name ?? t("gumasta.assignedTo")}
+                          </Text>
+                        </View>
                       ) : null}
                     </View>
                   </View>
@@ -1191,49 +1111,6 @@ export default function HomeScreen() {
         </Modal>
       )}
 
-      {bulkAssignModalVisible && (
-        <Modal
-          visible
-          transparent
-          animationType="slide"
-          onRequestClose={() => setBulkAssignModalVisible(false)}
-        >
-          <View style={styles.bulkAssignOverlay}>
-            <TouchableOpacity
-              style={styles.bulkAssignBackdrop}
-              activeOpacity={1}
-              onPress={() => setBulkAssignModalVisible(false)}
-            />
-            <View style={styles.bulkAssignSheet}>
-              <View style={styles.bulkAssignHeader}>
-                <Text style={styles.bulkAssignTitle}>{t("gumasta.assignToAll")}</Text>
-                <TouchableOpacity onPress={() => setBulkAssignModalVisible(false)}>
-                  <X size={20} color={COLORS.text} />
-                </TouchableOpacity>
-              </View>
-              {gumastas.map((g) => (
-                <TouchableOpacity
-                  key={g.id}
-                  style={styles.bulkAssignItem}
-                  onPress={() => handleBulkAssignGumasta(g.id)}
-                >
-                  <View style={styles.bulkAssignAvatar}>
-                    {g.photo_url ? (
-                      <Image source={{ uri: g.photo_url }} style={{ width: 40, height: 40, borderRadius: 20 }} />
-                    ) : (
-                      <Users size={18} color={COLORS.textMuted} />
-                    )}
-                  </View>
-                  <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-                    <Text style={styles.bulkAssignName}>{g.name}</Text>
-                    <Text style={styles.bulkAssignPhone}>{g.contact_number}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </Modal>
-      )}
     </SafeAreaView>
   );
 }
@@ -1339,69 +1216,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: SPACING.sm,
   },
-  bulkAssignBtn: {
+  assignGumastaBtn: {
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
   },
-  bulkAssignBtnText: {
+  assignGumastaBtnText: {
+    fontSize: 11,
+    color: COLORS.surface,
+    fontWeight: "600",
+  },
+  gumastaLabel: {
+    marginTop: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: "rgba(13, 148, 136, 0.1)",
+    borderRadius: RADIUS.sm,
+    alignSelf: "flex-start",
+  },
+  gumastaLabelText: {
     fontSize: 11,
     color: COLORS.primary,
-    fontWeight: "600",
-  },
-  bulkAssignOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
-  },
-  bulkAssignBackdrop: {
-    flex: 1,
-  },
-  bulkAssignSheet: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    paddingBottom: 40,
-  },
-  bulkAssignHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  bulkAssignTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  bulkAssignItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  bulkAssignAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surfaceSecondary,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  bulkAssignName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-  bulkAssignPhone: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
+    fontWeight: "500",
+    maxWidth: 120,
   },
   collapsibleCard: {
     backgroundColor: COLORS.surface,

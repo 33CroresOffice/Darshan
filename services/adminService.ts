@@ -96,6 +96,18 @@ export async function getRegistrationById(
 
   const registration = data as SebayatRegistration;
 
+  // Newer registrations use category_ids (array) instead of category_id FK.
+  // If the join produced no category, resolve names from category_ids.
+  if (!registration.category && registration.category_ids?.length) {
+    const { data: cats } = await supabase
+      .from("categories")
+      .select("id, name")
+      .in("id", registration.category_ids);
+    if (cats?.length) {
+      registration.category = { id: cats[0].id, name: cats.map((c) => c.name).join(", ") } as any;
+    }
+  }
+
   return registration;
 }
 

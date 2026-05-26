@@ -11,6 +11,7 @@ import {
   getDeviceId,
   getOutbox,
   loadServerQuota,
+  normaliseError,
   saveServerQuota,
   setCachedTickets,
   todayString,
@@ -428,7 +429,10 @@ export async function recordWestGateEventResilient(args: {
       p_captured_at: capturedAt,
       p_device_id: deviceId,
     });
-    if (!error) return { success: true, message: "West gate verified", offline: false };
+    // Online path: return immediately regardless of outcome — do NOT fall
+    // through to the offline queue when the device has a live connection.
+    if (error) return { success: false, message: normaliseError(error), offline: false };
+    return { success: true, message: "West gate verified", offline: false };
   }
 
   let offlineModeWest = true;
@@ -510,7 +514,10 @@ export async function recordInnerGateEventResilient(args: {
       p_device_id: deviceId,
       p_reason: args.reason ?? null,
     });
-    if (!error) return { success: true, message: "Inner gate verified", offline: false };
+    // Online path: return immediately regardless of outcome — do NOT fall
+    // through to the offline queue when the device has a live connection.
+    if (error) return { success: false, message: normaliseError(error), offline: false };
+    return { success: true, message: "Inner gate verified", offline: false };
   }
 
   let offlineModeInner = true;

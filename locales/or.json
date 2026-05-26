@@ -698,6 +698,25 @@
     "aadharUploaded": "ଆଧାର କାର୍ଡ ଅପଲୋଡ ହୋଇଛି",
     "tapToChange": "ବଦଳାଇବାକୁ ଟ୍ୟାପ୍ କରନ୍ତୁ",
     "uploadAadhar": "ଆଧାର କାର୍ଡ ଅପଲୋଡ",
-    "uploadAadharHint": "ଆଧାର କାର୍ଡର ସାମ୍ନା ପଟ"
+    "uploadAadharHint": "ଆଧାର କାର୍ଡର ସାମ୍ନା ପଟ",
+    "assign": {
+      "title": "ଗୁମାସ୍ତା ନିୟୋଜନ",
+      "selectGumasta": "ଗୁମାସ୍ତା ବାଛନ୍ତୁ",
+      "selectTickets": "ଟିକେଟ ବାଛନ୍ତୁ",
+      "selectAll": "ସବୁ ବାଛନ୍ତୁ",
+      "deselectAll": "ସବୁ ବାଦ ଦିଅନ୍ତୁ",
+      "selectTicketsHint": "ଉପରୁ ଟିକେଟ ବାଛନ୍ତୁ",
+      "ticketsSelected": "{{count}}ଟି ଟିକେଟ ବଛା ହୋଇଛି",
+      "assignBtn": "ନିୟୋଜନ କରନ୍ତୁ",
+      "noGumastas": "କୌଣସି ଅନୁମୋଦିତ ଗୁମାସ୍ତା ନାହାଁନ୍ତି",
+      "noGumastasHint": "ନିୟୋଜନ ପୂର୍ବରୁ ଗୁମାସ୍ତା ଯୋଡ଼ି ଅନୁମୋଦନ କରନ୍ତୁ",
+      "manageGumastas": "ଗୁମାସ୍ତା ପରିଚାଳନା",
+      "noTickets": "କୌଣସି ସକ୍ରିୟ ଟିକେଟ ନାହିଁ",
+      "noTicketsHint": "ଗୁମାସ୍ତା ନିୟୋଜନ ପୂର୍ବରୁ ଏକ ଟିକେଟ ତିଆରି କରନ୍ତୁ",
+      "loadError": "ତଥ୍ୟ ଲୋଡ ବିଫଳ। ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।",
+      "assignError": "ଗୁମାସ୍ତା ନିୟୋଜନ ବିଫଳ। ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।",
+      "successTitle": "ସଫଳତାର ସହ ନିୟୋଜିତ!",
+      "successBody": "{{name}}ଙ୍କୁ {{count}}ଟି ଟିକେଟରେ ନିୟୋଜିତ କରାଯାଇଛି"
+    }
   }
 }

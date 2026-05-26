@@ -699,11 +699,16 @@ const NETWORK_ERROR_PATTERNS = [
  * "TypeError: Network request failed" never reaches the UI.
  */
 export function normaliseError(err: unknown): string {
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  if (NETWORK_ERROR_PATTERNS.some((p) => msg.includes(p))) {
+  const extracted =
+    err instanceof Error
+      ? err.message
+      : typeof err === "object" && err !== null && "message" in err
+      ? String((err as { message: unknown }).message)
+      : String(err);
+  if (NETWORK_ERROR_PATTERNS.some((p) => extracted.toLowerCase().includes(p))) {
     return "You are offline. Please check your internet connection.";
   }
-  return err instanceof Error ? err.message : String(err);
+  return extracted;
 }
 
 // ---------- Helpers ----------

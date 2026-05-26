@@ -1436,6 +1436,25 @@
     "aadharUploaded": "Aadhaar card uploaded",
     "tapToChange": "Tap to replace",
     "uploadAadhar": "Upload Aadhaar Card",
-    "uploadAadharHint": "Front side of the Aadhaar card"
+    "uploadAadharHint": "Front side of the Aadhaar card",
+    "assign": {
+      "title": "Assign Gumasta",
+      "selectGumasta": "Select Gumasta",
+      "selectTickets": "Select Tickets",
+      "selectAll": "Select All",
+      "deselectAll": "Deselect All",
+      "selectTicketsHint": "Select tickets above",
+      "ticketsSelected": "{{count}} ticket(s) selected",
+      "assignBtn": "Assign",
+      "noGumastas": "No Approved Gumastas",
+      "noGumastasHint": "Add and get a gumasta approved before assigning",
+      "manageGumastas": "Manage Gumastas",
+      "noTickets": "No Active Tickets",
+      "noTicketsHint": "Create a ticket first before assigning a gumasta",
+      "loadError": "Failed to load data. Please try again.",
+      "assignError": "Failed to assign gumasta. Please try again.",
+      "successTitle": "Assigned Successfully!",
+      "successBody": "{{name}} has been assigned to {{count}} ticket(s)"
+    }
   }
 }
