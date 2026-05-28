@@ -8,7 +8,6 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Bell, CheckCheck } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
@@ -23,7 +22,7 @@ import type { Notification } from "@/types";
 
 export default function NotificationsScreen() {
   const { user } = useAuth();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { t } = useTranslation();
   const { refreshUnreadCount } = useNotifications();
   const [notifications, setNotifications] = useState<Notification[]>([]);

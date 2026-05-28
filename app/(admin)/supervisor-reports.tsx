@@ -8,7 +8,6 @@ import {
   RefreshControl,
   TextInput,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   Users,
   Search,
@@ -44,7 +43,7 @@ const DATE_PRESETS = [
 ];
 
 export default function SupervisorReportsScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const [supervisors, setSupervisors] = useState<SupervisorReportItem[]>([]);
   const [filteredSupervisors, setFilteredSupervisors] = useState<SupervisorReportItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");

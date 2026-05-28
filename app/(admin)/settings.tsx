@@ -9,7 +9,6 @@ import {
   Modal,
   Switch,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   Users,
   Save,
@@ -82,7 +81,7 @@ import type { Category, DarshanSlot } from "@/types";
 
 export default function SettingsScreen() {
   const { profile } = useAuth();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const isSuperAdmin = profile?.role === "superadmin";
 
   const [maxDevotees, setMaxDevotees] = useState("");

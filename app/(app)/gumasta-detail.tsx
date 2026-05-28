@@ -11,7 +11,6 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
@@ -63,7 +62,7 @@ async function pickImageFromLibrary(options: ExpoImagePicker.ImagePickerOptions)
 }
 
 export default function GumastaDetailScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useTranslation();

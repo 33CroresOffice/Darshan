@@ -8,7 +8,6 @@ import {
   Image,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   ArrowLeft,
   User,
@@ -40,7 +39,7 @@ const STATUS_STYLE: Record<EntryStatus, { color: string; bg: string; icon: React
 export default function EntryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { t } = useTranslation();
   const [entry, setEntry] = useState<GateEntry | null>(null);
   const [entryGumasta, setEntryGumasta] = useState<Gumasta | null>(null);

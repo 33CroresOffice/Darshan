@@ -17,11 +17,10 @@ import { getApprovalRule, type ApprovalRule } from "@/services/settingsService";
 import { supabase } from "@/lib/supabase";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { SebayatRegistration, Category } from "@/types";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 export default function PendingScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const channelId = useRef(`admin-pending-${Math.random().toString(36).slice(2)}`);
   const [registrations, setRegistrations] = useState<SebayatRegistration[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);

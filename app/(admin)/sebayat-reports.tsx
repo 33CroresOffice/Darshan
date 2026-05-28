@@ -9,7 +9,6 @@ import {
   Image,
   TextInput,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   Users,
   Search,
@@ -42,7 +41,7 @@ const DATE_PRESETS = [
 ];
 
 export default function SebayatReportsScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const [sebayats, setSebayats] = useState<SebayatReportItem[]>([]);
   const [filteredSebayats, setFilteredSebayats] = useState<SebayatReportItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");

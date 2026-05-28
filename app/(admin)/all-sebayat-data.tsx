@@ -22,7 +22,6 @@ import {
   X,
 } from "lucide-react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { supabase } from "@/lib/supabase";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 
@@ -103,7 +102,7 @@ const RANGE_PRESETS = [
 
 export default function AllSebayatDataScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const today = new Date();
 
   const [dateMode] = useState<DateMode>("range");

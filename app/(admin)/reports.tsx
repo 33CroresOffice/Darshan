@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { CalendarPicker, formatDateDisplay } from "@/components/forms/CalendarPicker";
 import { useRouter } from "expo-router";
 import { FileText, Calendar, ListFilter as Filter, ChevronDown, ChevronUp, Clock, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Circle as XCircle, Users, ChevronRight, Shield } from "lucide-react-native";
@@ -39,7 +38,7 @@ const DATE_PRESETS = [
 
 export default function ReportsScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const today = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     .toISOString()

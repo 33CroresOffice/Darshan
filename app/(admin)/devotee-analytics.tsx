@@ -7,7 +7,6 @@ import {
   RefreshControl,
   TouchableOpacity,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { CalendarPicker, formatDateDisplay } from "@/components/forms/CalendarPicker";
 import {
   Heart,
@@ -33,7 +32,7 @@ const DATE_PRESETS = [
 ];
 
 export default function DevoteeAnalyticsScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const [analytics, setAnalytics] = useState<DevoteeAnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

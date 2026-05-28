@@ -10,7 +10,6 @@ import {
   SafeAreaView,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from "@react-navigation/native";
 import { ArrowLeft, Check, User, UserCheck, Users } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -29,7 +28,7 @@ import type { GateEntry, Gumasta } from "@/types/database";
 
 export default function AssignGumastaScreen() {
   const { t } = useTranslation();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const router = useRouter();
   const slotName = useSlotName();
   const ln = useLocalizedNumber();

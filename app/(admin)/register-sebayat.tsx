@@ -17,7 +17,6 @@ import {
   CircleAlert as AlertCircle,
   UserPlus,
 } from "lucide-react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Input } from "@/components/forms/Input";
 import { Dropdown } from "@/components/forms/Dropdown";
 import { ImagePicker } from "@/components/forms/ImagePicker";
@@ -46,7 +45,7 @@ interface SebayatFormData {
 
 export default function RegisterSebayatScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

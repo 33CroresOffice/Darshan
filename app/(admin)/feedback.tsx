@@ -8,7 +8,6 @@ import {
   RefreshControl,
   TextInput,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, MessageSquare, Shield, User, Search, ListFilter as Filter } from "lucide-react-native";
@@ -49,7 +48,7 @@ function formatTime(iso: string): string {
 
 export default function FeedbackScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

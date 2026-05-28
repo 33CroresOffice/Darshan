@@ -11,7 +11,6 @@ import {
   Image,
   ActivityIndicator,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -39,7 +38,7 @@ type TabMode = "search" | "create";
 
 export default function CreateAdminScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { profile: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === "superadmin";
   const [activeTab, setActiveTab] = useState<TabMode>("search");

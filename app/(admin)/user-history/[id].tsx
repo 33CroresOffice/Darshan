@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -67,7 +66,7 @@ function StatusIcon({ status, size = 16 }: { status: string; size?: number }) {
 }
 
 export default function UserHistoryScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const router = useRouter();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const [entries, setEntries] = useState<GateEntry[]>([]);

@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from "@react-navigation/native";
 import { Plus, User, ArrowLeft, Phone } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -23,7 +22,7 @@ import type { Gumasta } from "@/types/database";
 
 export default function GumastasScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { t } = useTranslation();
   const { registration } = useAuth();
   const [gumastas, setGumastas] = useState<Gumasta[]>([]);

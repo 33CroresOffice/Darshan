@@ -8,7 +8,6 @@ import {
   RefreshControl,
   TextInput,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
@@ -204,7 +203,7 @@ function SessionCard({ session }: { session: SessionWithDetails }) {
 
 export default function SlotSessionReportsScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { profile } = useAuth();
   const [sessions, setSessions] = useState<SessionWithDetails[]>([]);
   const [loading, setLoading] = useState(true);

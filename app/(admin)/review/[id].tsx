@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -47,7 +46,7 @@ import type {
 } from "@/types";
 
 export default function ReviewScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();

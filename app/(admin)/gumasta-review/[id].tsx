@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -30,7 +29,7 @@ import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { Gumasta, GumastaVoteSummary } from "@/types/database";
 
 export default function GumastaReviewDetailScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { profile } = useAuth();

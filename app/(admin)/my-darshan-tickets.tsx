@@ -5,11 +5,10 @@ import { ArrowLeft } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { DarshanTicketCreator } from "@/components/tickets/DarshanTicketCreator";
 import { COLORS, SPACING } from "@/constants/config";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 export default function MyDarshanTicketsScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { profile, hasApprovedRegistration, sebayatRegistrationId } = useAuth();
 
   return (

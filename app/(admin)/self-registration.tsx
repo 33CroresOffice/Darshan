@@ -17,7 +17,6 @@ import {
   CircleAlert as AlertCircle,
   Ticket,
 } from "lucide-react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Input } from "@/components/forms/Input";
 import { Dropdown } from "@/components/forms/Dropdown";
 import { ImagePicker } from "@/components/forms/ImagePicker";
@@ -36,7 +35,7 @@ const STEPS = [
 
 export default function SelfRegistrationScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { user, profile, refreshRegistration } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);

@@ -14,11 +14,10 @@ import { getRegistrationsByStatus } from "@/services/adminService";
 import { supabase } from "@/lib/supabase";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { SebayatRegistration } from "@/types";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 export default function RejectedScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const channelId = useRef(`admin-rejected-${Math.random().toString(36).slice(2)}`);
   const [registrations, setRegistrations] = useState<SebayatRegistration[]>([]);
   const [loading, setLoading] = useState(true);

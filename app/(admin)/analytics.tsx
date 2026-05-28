@@ -8,7 +8,6 @@ import {
   Dimensions,
   TouchableOpacity,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { TrendingUp, Users, DoorOpen, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Award, ChartBar as BarChart3, Calendar } from "lucide-react-native";
 import { CalendarPicker, formatDateDisplay } from "@/components/forms/CalendarPicker";
 import {
@@ -30,7 +29,7 @@ const DATE_PRESETS = [
 ];
 
 export default function AnalyticsScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [monthlyTrend, setMonthlyTrend] = useState<
     { month: string; entries: number; devotees: number }[]

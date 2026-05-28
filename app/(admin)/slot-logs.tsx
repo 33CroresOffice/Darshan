@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Play, Square, ClipboardList } from "lucide-react-native";
@@ -17,7 +16,7 @@ import type { SlotSessionLog } from "@/types/database";
 
 export default function AdminSlotLogsScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const [logs, setLogs] = useState<SlotSessionLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

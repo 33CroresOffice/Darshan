@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { ArrowLeft, Play, Square, ClipboardList } from "lucide-react-native";
 import { getAllSessionLogs } from "@/services/slotSessionService";
 import { COLORS, SHADOWS } from "@/constants/config";
@@ -18,7 +17,7 @@ import { useTranslation } from "react-i18next";
 
 export default function SlotLogsScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const { t } = useTranslation();
   const [logs, setLogs] = useState<SlotSessionLog[]>([]);
   const [loading, setLoading] = useState(true);

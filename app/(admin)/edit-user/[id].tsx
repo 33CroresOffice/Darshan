@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -35,7 +34,7 @@ import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { Profile, UserRole } from "@/types";
 
 export default function EditUserScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = 0;
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profile: currentUser } = useAuth();
