@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { supabase } from "@/lib/supabase";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 
@@ -102,6 +103,7 @@ const RANGE_PRESETS = [
 
 export default function AllSebayatDataScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const today = new Date();
 
   const [dateMode] = useState<DateMode>("range");
@@ -258,7 +260,7 @@ export default function AllSebayatDataScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 16 }]}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
             <ArrowLeft size={22} color={COLORS.text} />
@@ -561,7 +563,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 48,
   },
   header: {
     flexDirection: "row",

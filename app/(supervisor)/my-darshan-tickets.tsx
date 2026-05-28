@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { ArrowLeft } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { DarshanTicketCreator } from "@/components/tickets/DarshanTicketCreator";
@@ -9,6 +10,7 @@ import { useTranslation } from "react-i18next";
 
 export default function MyDarshanTicketsScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const { t } = useTranslation();
   const { profile, hasApprovedRegistration, sebayatRegistrationId } = useAuth();
 
@@ -25,7 +27,7 @@ export default function MyDarshanTicketsScreen() {
       {hasApprovedRegistration && sebayatRegistrationId ? (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <DarshanTicketCreator
@@ -81,7 +83,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.lg,
-    paddingBottom: SPACING.xl,
   },
   emptyState: {
     flex: 1,

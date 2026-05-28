@@ -8,6 +8,7 @@ import {
   RefreshControl,
   TextInput,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, MessageSquare, Shield, User, Search, ListFilter as Filter } from "lucide-react-native";
@@ -48,6 +49,7 @@ function formatTime(iso: string): string {
 
 export default function FeedbackScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -144,7 +146,7 @@ export default function FeedbackScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + 16 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
@@ -307,7 +309,6 @@ const styles = StyleSheet.create({
   list: {
     padding: SPACING.md,
     gap: 12,
-    paddingBottom: 100,
   },
   card: {
     backgroundColor: COLORS.surface,

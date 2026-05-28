@@ -9,6 +9,7 @@ import {
   Modal,
   Switch,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   Users,
   Save,
@@ -81,6 +82,7 @@ import type { Category, DarshanSlot } from "@/types";
 
 export default function SettingsScreen() {
   const { profile } = useAuth();
+  const tabBarHeight = useBottomTabBarHeight();
   const isSuperAdmin = profile?.role === "superadmin";
 
   const [maxDevotees, setMaxDevotees] = useState("");
@@ -611,7 +613,7 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerSection}>
@@ -1700,7 +1702,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 40,
   },
   headerSection: {
     marginBottom: 20,

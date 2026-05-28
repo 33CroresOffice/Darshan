@@ -17,6 +17,7 @@ import {
   CircleAlert as AlertCircle,
   Ticket,
 } from "lucide-react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Input } from "@/components/forms/Input";
 import { Dropdown } from "@/components/forms/Dropdown";
 import { ImagePicker } from "@/components/forms/ImagePicker";
@@ -35,6 +36,7 @@ const STEPS = [
 
 export default function SelfRegistrationScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const { user, profile, refreshRegistration } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -238,7 +240,7 @@ export default function SelfRegistrationScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity
@@ -361,7 +363,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingTop: 60,
-    paddingBottom: 40,
   },
   backButton: {
     width: 44,

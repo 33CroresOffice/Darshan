@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Circle as XCircle, TriangleAlert as AlertTriangle, LogOut, Check } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/context/AuthContext";
@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import type { RegistrationApproval } from "@/types";
 
 export default function RejectedScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useTranslation();
   const { registration } = useAuth();
@@ -51,7 +52,7 @@ export default function RejectedScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.statusBanner}>
@@ -157,7 +158,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xl,
   },
   statusBanner: {
     backgroundColor: COLORS.errorLight,

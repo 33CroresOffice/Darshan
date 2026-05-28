@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -34,6 +35,7 @@ import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { Profile, UserRole } from "@/types";
 
 export default function EditUserScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profile: currentUser } = useAuth();
@@ -278,7 +280,7 @@ export default function EditUserScreen() {
     <View style={styles.container}>
       {saving && <LoadingOverlay message="Saving..." />}
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity
@@ -481,7 +483,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingTop: 16,
-    paddingBottom: 40,
   },
   backButton: {
     width: 44,

@@ -14,9 +14,11 @@ import { getRegistrationsByStatus } from "@/services/adminService";
 import { supabase } from "@/lib/supabase";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { SebayatRegistration } from "@/types";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 export default function RejectedScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const channelId = useRef(`admin-rejected-${Math.random().toString(36).slice(2)}`);
   const [registrations, setRegistrations] = useState<SebayatRegistration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,7 @@ export default function RejectedScreen() {
         data={registrations}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + 16 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -135,7 +137,6 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
   },
   item: {
     backgroundColor: COLORS.surface,

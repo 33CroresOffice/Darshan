@@ -11,7 +11,7 @@ import {
   Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { User, FileText, MapPin, Check } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/forms/Input";
@@ -54,6 +54,7 @@ const EMPTY_FORM: RegistrationFormData = {
 const DRAFT_KEY = "registration_draft";
 
 export default function RegistrationScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useTranslation();
   const { user, refreshRegistration } = useAuth();
@@ -518,7 +519,7 @@ export default function RegistrationScreen() {
       >
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -657,7 +658,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.lg,
   },
   card: {
     backgroundColor: COLORS.surface,

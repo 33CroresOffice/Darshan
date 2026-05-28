@@ -8,6 +8,7 @@ import {
   Image,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   ArrowLeft,
   User,
@@ -39,6 +40,7 @@ const STATUS_STYLE: Record<EntryStatus, { color: string; bg: string; icon: React
 export default function EntryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const { t } = useTranslation();
   const [entry, setEntry] = useState<GateEntry | null>(null);
   const [entryGumasta, setEntryGumasta] = useState<Gumasta | null>(null);
@@ -162,7 +164,7 @@ export default function EntryDetailScreen() {
         </View>
       )}
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity
@@ -423,7 +425,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingTop: 60,
-    paddingBottom: 100,
   },
   loadingContainer: {
     flex: 1,

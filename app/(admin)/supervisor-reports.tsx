@@ -8,6 +8,7 @@ import {
   RefreshControl,
   TextInput,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   Users,
   Search,
@@ -43,6 +44,7 @@ const DATE_PRESETS = [
 ];
 
 export default function SupervisorReportsScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const [supervisors, setSupervisors] = useState<SupervisorReportItem[]>([]);
   const [filteredSupervisors, setFilteredSupervisors] = useState<SupervisorReportItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -277,7 +279,7 @@ export default function SupervisorReportsScreen() {
     return (
       <View style={styles.container}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity
@@ -558,7 +560,7 @@ export default function SupervisorReportsScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -700,7 +702,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingTop: 60,
-    paddingBottom: 100,
   },
   header: {
     marginBottom: 20,

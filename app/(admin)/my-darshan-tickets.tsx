@@ -5,9 +5,11 @@ import { ArrowLeft } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { DarshanTicketCreator } from "@/components/tickets/DarshanTicketCreator";
 import { COLORS, SPACING } from "@/constants/config";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 export default function MyDarshanTicketsScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const { profile, hasApprovedRegistration, sebayatRegistrationId } = useAuth();
 
   return (
@@ -23,7 +25,7 @@ export default function MyDarshanTicketsScreen() {
       {hasApprovedRegistration && sebayatRegistrationId ? (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <DarshanTicketCreator
@@ -79,7 +81,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.lg,
-    paddingBottom: SPACING.xl,
   },
   emptyState: {
     flex: 1,

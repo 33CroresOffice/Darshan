@@ -8,6 +8,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Bell, CheckCheck } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
@@ -22,6 +23,7 @@ import type { Notification } from "@/types";
 
 export default function NotificationsScreen() {
   const { user } = useAuth();
+  const tabBarHeight = useBottomTabBarHeight();
   const { t } = useTranslation();
   const { refreshUnreadCount } = useNotifications();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -131,7 +133,7 @@ export default function NotificationsScreen() {
         data={notifications}
         renderItem={renderNotification}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + 16 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -186,7 +188,6 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
   },
   notificationItem: {
     backgroundColor: COLORS.surface,

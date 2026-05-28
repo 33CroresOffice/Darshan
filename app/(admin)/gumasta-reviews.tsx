@@ -13,6 +13,7 @@ import { Clock, CircleCheck as CheckCircle, Circle as XCircle, User, Phone, Chev
 import { getGumastasByApprovalStatus } from "@/services/gumastaService";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import type { Gumasta } from "@/types/database";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 type TabType = "pending" | "approved" | "rejected";
 
@@ -24,6 +25,7 @@ const TABS: { key: TabType; label: string; icon: typeof Clock; color: string; bg
 
 export default function GumastaReviewsScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const [activeTab, setActiveTab] = useState<TabType>("pending");
   const [gumastas, setGumastas] = useState<Gumasta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,7 +128,7 @@ export default function GumastaReviewsScreen() {
         data={gumastas}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + 16 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
@@ -184,7 +186,6 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: SPACING.md,
-    paddingBottom: 100,
   },
   card: {
     backgroundColor: COLORS.surface,

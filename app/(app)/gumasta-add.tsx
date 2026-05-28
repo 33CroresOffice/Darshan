@@ -19,6 +19,7 @@ import { createGumasta, uploadGumastaPhoto, uploadGumastaAadhar, checkDuplicateG
 import { Input } from "@/components/forms/Input";
 import { Button } from "@/components/actions/Button";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 async function pickImage(options: ExpoImagePicker.ImagePickerOptions): Promise<string | null> {
   const result = await ExpoImagePicker.launchImageLibraryAsync({
@@ -38,6 +39,7 @@ async function pickImage(options: ExpoImagePicker.ImagePickerOptions): Promise<s
 }
 
 export default function GumastaAddScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const router = useRouter();
   const { t } = useTranslation();
   const { user, registration } = useAuth();
@@ -134,7 +136,7 @@ export default function GumastaAddScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.form}>
+        <ScrollView contentContainerStyle={[styles.form, { paddingBottom: tabBarHeight + 16 }]}>
           {/* Profile photo */}
           <TouchableOpacity style={styles.photoPicker} onPress={pickPhoto}>
             {photoUri ? (
@@ -238,7 +240,6 @@ const styles = StyleSheet.create({
   },
   form: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xxl,
   },
   photoPicker: {
     alignSelf: "center",

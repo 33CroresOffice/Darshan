@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useFocusEffect } from "@react-navigation/native";
 import { Plus, User, ArrowLeft, Phone } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/context/AuthContext";
@@ -21,6 +23,7 @@ import type { Gumasta } from "@/types/database";
 
 export default function GumastasScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const { t } = useTranslation();
   const { registration } = useAuth();
   const [gumastas, setGumastas] = useState<Gumasta[]>([]);
@@ -45,9 +48,11 @@ export default function GumastasScreen() {
     }
   }, [registration?.id]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -166,7 +171,7 @@ export default function GumastasScreen() {
           data={gumastas}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + 16 }]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
@@ -215,7 +220,6 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.xl,
   },
   card: {
     backgroundColor: COLORS.surface,

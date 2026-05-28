@@ -11,6 +11,7 @@ import {
   Image,
   ActivityIndicator,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -38,6 +39,7 @@ type TabMode = "search" | "create";
 
 export default function CreateAdminScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const { profile: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === "superadmin";
   const [activeTab, setActiveTab] = useState<TabMode>("search");
@@ -282,7 +284,7 @@ export default function CreateAdminScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity
@@ -550,7 +552,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingTop: 4,
-    paddingBottom: 40,
   },
   backButton: {
     width: 40,

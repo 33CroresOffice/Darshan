@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -29,6 +30,7 @@ import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { Gumasta, GumastaVoteSummary } from "@/types/database";
 
 export default function GumastaReviewDetailScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { profile } = useAuth();
@@ -183,7 +185,7 @@ export default function GumastaReviewDetailScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 16 }]} showsVerticalScrollIndicator={false}>
         {error ? (
           <View style={styles.errorBanner}>
             <Text style={styles.errorBannerText}>{error}</Text>
@@ -529,7 +531,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.md,
-    paddingBottom: 100,
   },
   errorBanner: {
     backgroundColor: COLORS.errorLight,

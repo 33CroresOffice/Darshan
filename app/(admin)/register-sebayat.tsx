@@ -17,6 +17,7 @@ import {
   CircleAlert as AlertCircle,
   UserPlus,
 } from "lucide-react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Input } from "@/components/forms/Input";
 import { Dropdown } from "@/components/forms/Dropdown";
 import { ImagePicker } from "@/components/forms/ImagePicker";
@@ -45,6 +46,7 @@ interface SebayatFormData {
 
 export default function RegisterSebayatScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -229,7 +231,7 @@ export default function RegisterSebayatScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
           showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity
@@ -352,7 +354,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingTop: 60,
-    paddingBottom: 40,
   },
   backButton: {
     width: 44,

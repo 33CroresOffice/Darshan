@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Clock, FileText, Search, CircleCheck as CheckCircle, LogOut } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { signOut } from "@/services/authService";
@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 
 export default function StatusScreen() {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t } = useTranslation();
   const [approvedCount, setApprovedCount] = useState(0);
@@ -69,7 +70,7 @@ export default function StatusScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.statusBanner}>
@@ -186,7 +187,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xl,
   },
   statusBanner: {
     backgroundColor: COLORS.warningLight,

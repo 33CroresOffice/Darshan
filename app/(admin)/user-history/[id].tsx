@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -66,6 +67,7 @@ function StatusIcon({ status, size = 16 }: { status: string; size?: number }) {
 }
 
 export default function UserHistoryScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const router = useRouter();
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const [entries, setEntries] = useState<GateEntry[]>([]);
@@ -187,7 +189,7 @@ export default function UserHistoryScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 16 }]}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
             <ArrowLeft size={22} color={COLORS.text} />
@@ -412,7 +414,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingTop: 16,
-    paddingBottom: 40,
   },
   header: {
     flexDirection: "row",

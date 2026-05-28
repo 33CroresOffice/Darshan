@@ -257,7 +257,7 @@ export async function loadSebayatListCache(): Promise<CachedSebayat[]> {
 export function searchSebayatListCache(
   list: CachedSebayat[],
   query: string,
-  mode: "phone" | "templeid"
+  mode: "phone" | "healthcard"
 ): CachedSebayat | null {
   const q = query.trim().toLowerCase();
   if (!q) return null;
@@ -266,10 +266,9 @@ export function searchSebayatListCache(
     if (mode === "phone" && last10(s.phone_number ?? "") === last10(q)) {
       return s;
     }
-    if (mode === "templeid") {
-      const cardNum = (s.temple_id_card_number ?? "").toLowerCase();
+    if (mode === "healthcard") {
       const hcNum = (s.temple_health_card_id ?? "").toLowerCase();
-      if (cardNum === q || hcNum === q) return s;
+      if (hcNum === q) return s;
     }
   }
   return null;

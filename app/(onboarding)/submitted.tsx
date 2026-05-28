@@ -1,10 +1,11 @@
 import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { CircleCheck, Clock, Bell, FileCheck } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 
 export default function SubmittedScreen() {
+  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
 
   const STEPS = [
@@ -33,7 +34,7 @@ export default function SubmittedScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.statusBanner}>
@@ -117,7 +118,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xl,
   },
   statusBanner: {
     backgroundColor: COLORS.successLight,

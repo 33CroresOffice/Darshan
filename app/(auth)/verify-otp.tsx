@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
@@ -25,6 +25,7 @@ import { verifyOtp, resendOtp } from "@/services/authService";
 import { COLORS, OTP_CONFIG, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 
 export default function VerifyOtpScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const {
     phone,
@@ -181,7 +182,7 @@ export default function VerifyOtpScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -327,7 +328,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xl,
   },
   headerSection: {
     paddingTop: SPACING.md,

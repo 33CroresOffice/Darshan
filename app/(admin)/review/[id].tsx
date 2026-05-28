@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -46,6 +47,7 @@ import type {
 } from "@/types";
 
 export default function ReviewScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
@@ -221,7 +223,7 @@ export default function ReviewScreen() {
         <StatusBadge status={registration.approval_status} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}>
         <View style={styles.photoSection}>
           <TouchableOpacity onPress={() => setEnlargedImage(registration.photo_url)}>
             <Image
@@ -304,6 +306,44 @@ export default function ReviewScreen() {
             <InfoRow label="Allotment Number" value={registration.allotment_number || "-"} />
             <InfoRow label="Aadhaar Number" value={registration.aadhar_number || "-"} />
             <InfoRow label="Temple Health Card ID" value={registration.temple_health_card_id || "-"} />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Address Details</Text>
+          <View style={styles.card}>
+            <Text style={styles.addressSubheading}>Permanent Address</Text>
+            {registration.permanent_address || registration.permanent_city || registration.permanent_state ? (
+              <>
+                <InfoRow label="Address" value={registration.permanent_address || "-"} />
+                <InfoRow label="City / Village" value={registration.permanent_city || "-"} />
+                <InfoRow label="State" value={registration.permanent_state || "-"} />
+                <InfoRow label="Pincode" value={registration.permanent_pincode || "-"} />
+              </>
+            ) : (
+              <Text style={styles.addressNotProvided}>Not provided</Text>
+            )}
+
+            {registration.present_same_as_permanent ? (
+              <View style={styles.sameAddressBadge}>
+                <Text style={styles.sameAddressBadgeText}>Present address same as permanent</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.addressDivider} />
+                <Text style={styles.addressSubheading}>Present Address</Text>
+                {registration.present_address || registration.present_city || registration.present_state ? (
+                  <>
+                    <InfoRow label="Address" value={registration.present_address || "-"} />
+                    <InfoRow label="City / Village" value={registration.present_city || "-"} />
+                    <InfoRow label="State" value={registration.present_state || "-"} />
+                    <InfoRow label="Pincode" value={registration.present_pincode || "-"} />
+                  </>
+                ) : (
+                  <Text style={styles.addressNotProvided}>Not provided</Text>
+                )}
+              </>
+            )}
           </View>
         </View>
 
@@ -805,7 +845,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 32,
   },
   photoSection: {
     alignItems: "center",
@@ -970,6 +1009,39 @@ const styles = StyleSheet.create({
     flex: 2,
     textAlign: "right",
     textTransform: "capitalize",
+  },
+  addressSubheading: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  addressDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 16,
+  },
+  addressNotProvided: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontStyle: "italic",
+    paddingVertical: 8,
+  },
+  sameAddressBadge: {
+    marginTop: 14,
+    backgroundColor: COLORS.surfaceSecondary,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignSelf: "flex-start",
+  },
+  sameAddressBadgeText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: COLORS.textSecondary,
   },
   documentContainer: {
     width: "100%",

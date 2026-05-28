@@ -11,14 +11,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { Search, Phone, IdCard, ChevronRight, WifiOff } from "lucide-react-native";
+import { Search, Phone, Heart, ChevronRight, WifiOff } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { searchSebayatResilient } from "@/services/offlineEntryService";
 import { connectivity, loadSebayatListCache } from "@/lib/offline";
 import { COLORS, SHADOWS, RADIUS, SPACING } from "@/constants/config";
 import type { SebayatRegistration } from "@/types/database";
 
-type SearchMode = "phone" | "templeid";
+type SearchMode = "phone" | "healthcard";
 
 interface SebayatSearchPanelProps {
   onSelect: (sebayat: SebayatRegistration) => void;
@@ -66,10 +66,10 @@ export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
       placeholder: t("supervisor.sebayatTickets.placeholderPhone"),
     },
     {
-      key: "templeid",
-      label: t("supervisor.sebayatTickets.tabTempleId"),
-      icon: IdCard,
-      placeholder: t("supervisor.sebayatTickets.placeholderTempleId"),
+      key: "healthcard",
+      label: t("supervisor.sebayatTickets.tabHealthCard"),
+      icon: Heart,
+      placeholder: t("supervisor.sebayatTickets.placeholderHealthCard"),
     },
   ];
 
@@ -138,7 +138,7 @@ export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
             placeholderTextColor={COLORS.textMuted}
             value={query}
             onChangeText={setQuery}
-            keyboardType={searchMode === "phone" ? "phone-pad" : "default"}
+            keyboardType={searchMode === "phone" ? "phone-pad" : "number-pad"}
             autoCapitalize="none"
             returnKeyType="search"
             onSubmitEditing={handleSearch}
@@ -173,7 +173,7 @@ export function SebayatSearchPanel({ onSelect }: SebayatSearchPanelProps) {
               ? t("supervisor.sebayatTickets.notFoundOffline")
               : searchMode === "phone"
               ? t("supervisor.sebayatTickets.notFoundPhone")
-              : t("supervisor.sebayatTickets.notFoundTempleId")}
+              : t("supervisor.sebayatTickets.notFoundHealthCard")}
           </Text>
         </View>
       )}

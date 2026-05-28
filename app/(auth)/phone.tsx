@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { MessageCircle, Smartphone, Phone } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -20,6 +20,7 @@ import { getOtpChannels, type OtpChannels } from "@/services/settingsService";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 
 export default function PhoneScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useTranslation();
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -69,7 +70,7 @@ export default function PhoneScreen() {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -227,7 +228,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xl,
   },
   headerSection: {
     alignItems: "center",

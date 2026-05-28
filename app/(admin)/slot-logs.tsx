@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Play, Square, ClipboardList } from "lucide-react-native";
@@ -16,6 +17,7 @@ import type { SlotSessionLog } from "@/types/database";
 
 export default function AdminSlotLogsScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
   const [logs, setLogs] = useState<SlotSessionLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,7 +66,7 @@ export default function AdminSlotLogsScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
@@ -157,7 +159,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 100,
   },
   emptyContainer: {
     alignItems: "center",

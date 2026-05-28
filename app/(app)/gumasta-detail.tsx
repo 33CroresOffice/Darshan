@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
@@ -62,6 +63,7 @@ async function pickImageFromLibrary(options: ExpoImagePicker.ImagePickerOptions)
 }
 
 export default function GumastaDetailScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useTranslation();
@@ -226,7 +228,7 @@ export default function GumastaDetailScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}>
           {editing ? (
             <>
               {/* Photo picker */}
@@ -523,7 +525,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xxl,
   },
   profileSection: {
     alignItems: "center",

@@ -35,6 +35,7 @@ import {
   isTicketExpired as isExpired,
   searchSebayatByPhone,
   searchSebayatByTempleId,
+  searchSebayatByHealthCard,
   flagEntryDiscrepancy,
 } from "./entryService";
 import { getTicketValidityMinutes, getOfflineModeEnabled } from "./settingsService";
@@ -559,14 +560,14 @@ export async function recordInnerGateEventResilient(args: {
 // Returns a SebayatRegistration-shaped object (may lack full join data when offline).
 export async function searchSebayatResilient(
   query: string,
-  mode: "phone" | "templeid"
+  mode: "phone" | "healthcard"
 ): Promise<SebayatRegistration | null> {
   if (connectivity.isOnline()) {
     try {
       const result =
         mode === "phone"
           ? await searchSebayatByPhone(query)
-          : await searchSebayatByTempleId(query);
+          : await searchSebayatByHealthCard(query);
       return result;
     } catch {}
   }

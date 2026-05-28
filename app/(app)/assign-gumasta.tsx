@@ -10,6 +10,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from "@react-navigation/native";
 import { ArrowLeft, Check, User, UserCheck, Users } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -28,6 +29,7 @@ import type { GateEntry, Gumasta } from "@/types/database";
 
 export default function AssignGumastaScreen() {
   const { t } = useTranslation();
+  const tabBarHeight = useBottomTabBarHeight();
   const router = useRouter();
   const slotName = useSlotName();
   const ln = useLocalizedNumber();
@@ -158,7 +160,7 @@ export default function AssignGumastaScreen() {
         <View style={styles.backBtn} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 16 }]}>
         {/* Gumasta picker */}
         <Text style={styles.sectionLabel}>{t("gumasta.assign.selectGumasta")}</Text>
         {gumastas.length === 0 ? (
@@ -351,7 +353,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.md,
-    paddingBottom: 100,
   },
   centered: {
     flex: 1,

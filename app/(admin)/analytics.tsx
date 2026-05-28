@@ -8,6 +8,7 @@ import {
   Dimensions,
   TouchableOpacity,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { TrendingUp, Users, DoorOpen, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Award, ChartBar as BarChart3, Calendar } from "lucide-react-native";
 import { CalendarPicker, formatDateDisplay } from "@/components/forms/CalendarPicker";
 import {
@@ -29,6 +30,7 @@ const DATE_PRESETS = [
 ];
 
 export default function AnalyticsScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [monthlyTrend, setMonthlyTrend] = useState<
     { month: string; entries: number; devotees: number }[]
@@ -135,7 +137,7 @@ export default function AnalyticsScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -430,7 +432,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 100,
   },
   header: {
     marginBottom: 16,

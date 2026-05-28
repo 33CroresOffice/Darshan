@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, Image, StyleSheet, Platform } from "react-native";
 import * as ExpoImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { COLORS, RADIUS, SPACING, SHADOWS } from "@/constants/config";
 import { Camera, Image as ImageIcon, FileText, X, Check } from "lucide-react-native";
 
@@ -73,14 +74,9 @@ export function FilePicker({ label, value, onChange, error }: FilePickerProps) {
       };
       input.click();
     } else {
-      // expo-document-picker is not in deps; open the image library so the
-      // user can select a photo of their document from their gallery.
-      const { status } = await ExpoImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") return;
-      const result = await ExpoImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: false,
-        quality: 0.85,
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         onChange(result.assets[0].uri);
