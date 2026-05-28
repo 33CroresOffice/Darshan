@@ -30,7 +30,6 @@ import {
   Check,
   CircleAlert as AlertCircle,
   Camera,
-  Clock,
   Ticket,
   List,
   Printer,
@@ -47,7 +46,6 @@ import {
   acknowledgeWestGateEntry,
   getEntryByCode,
   isTicketExpired,
-  getTicketTimeRemaining,
   getSebayatPendingTickets,
 } from "@/services/entryService";
 import { getActiveSession } from "@/services/slotSessionService";
@@ -516,16 +514,6 @@ export default function WestGateScreen() {
     }
   };
 
-  const formatTimeRemaining = (entry: GateEntry) => {
-    const remaining = getTicketTimeRemaining(entry);
-    if (remaining <= 0) return "Expired";
-    const minutes = Math.floor(remaining / 60000);
-    if (minutes < 60) return `${minutes}m left`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
-  };
-
   const SearchModeButton = ({
     mode,
     icon,
@@ -698,16 +686,9 @@ export default function WestGateScreen() {
                             <Text style={styles.marjanaMandapBadgeText}>{t('supervisor.darshanTickets.entryModeMarjanaMandap')}</Text>
                           </View>
                         )}
-                        {slotBlocked ? (
+                        {slotBlocked && (
                           <View style={styles.slotNotActiveBadge}>
                             <Text style={styles.slotNotActiveBadgeText}>{t('supervisor.westGate.slotNotActive')}</Text>
-                          </View>
-                        ) : (
-                          <View style={[styles.pendingTimeRow, expired && styles.pendingTimeExpired]}>
-                            <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
-                            <Text style={[styles.pendingTime, expired && { color: COLORS.error }]}>
-                              {formatTimeRemaining(ticket)}
-                            </Text>
                           </View>
                         )}
                       </View>
@@ -869,14 +850,6 @@ export default function WestGateScreen() {
                     </Text>
                     <Text style={styles.acknowledgeDetailLabel}>{t('supervisor.westGate.devotees')}</Text>
                   </View>
-                  <View style={styles.acknowledgeDetailDivider} />
-                  <View style={styles.acknowledgeDetailItem}>
-                    <Clock size={20} color={COLORS.warning} />
-                    <Text style={styles.acknowledgeDetailValue}>
-                      {formatTimeRemaining(selectedEntry)}
-                    </Text>
-                    <Text style={styles.acknowledgeDetailLabel}>Remaining</Text>
-                  </View>
                 </View>
 
                 {selectedEntry.offline_origin && (
@@ -979,14 +952,7 @@ export default function WestGateScreen() {
                         <View style={styles.slotNotActiveBadge}>
                           <Text style={styles.slotNotActiveBadgeText}>{t('supervisor.westGate.slotNotActive')}</Text>
                         </View>
-                      ) : (
-                        <View style={[styles.pendingTimeRow, expired && styles.pendingTimeExpired]}>
-                          <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
-                          <Text style={[styles.pendingTime, expired && { color: COLORS.error }]}>
-                            {formatTimeRemaining(ticket)}
-                          </Text>
-                        </View>
-                      )}
+                      ) : null}
                     </View>
                   </TouchableOpacity>
                 );
@@ -1267,12 +1233,6 @@ export default function WestGateScreen() {
                       <Users size={20} color={COLORS.primary} />
                       <Text style={styles.acknowledgeDetailValue}>{ln(selectedEntry.declared_devotee_count)}</Text>
                       <Text style={styles.acknowledgeDetailLabel}>{t('supervisor.westGate.devotees')}</Text>
-                    </View>
-                    <View style={styles.acknowledgeDetailDivider} />
-                    <View style={styles.acknowledgeDetailItem}>
-                      <Clock size={20} color={COLORS.warning} />
-                      <Text style={styles.acknowledgeDetailValue}>{formatTimeRemaining(selectedEntry)}</Text>
-                      <Text style={styles.acknowledgeDetailLabel}>Remaining</Text>
                     </View>
                   </View>
                   {selectedEntry.offline_origin && (

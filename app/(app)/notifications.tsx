@@ -8,7 +8,8 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Bell, CheckCheck } from "lucide-react-native";
+import { Bell, CheckCheck, ArrowLeft } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
 import {
@@ -22,6 +23,7 @@ import type { Notification } from "@/types";
 
 export default function NotificationsScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const tabBarHeight = 0;
   const { t } = useTranslation();
   const { refreshUnreadCount } = useNotifications();
@@ -116,8 +118,11 @@ export default function NotificationsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <ArrowLeft size={22} color={COLORS.text} />
+        </TouchableOpacity>
         <Text style={styles.title}>{t("app.notifications.title")}</Text>
-        {unreadCount > 0 && (
+        {unreadCount > 0 ? (
           <TouchableOpacity
             style={styles.markAllButton}
             onPress={handleMarkAllAsRead}
@@ -125,6 +130,8 @@ export default function NotificationsScreen() {
             <CheckCheck size={18} color={COLORS.primary} />
             <Text style={styles.markAllText}>{t("app.notifications.markAllRead")}</Text>
           </TouchableOpacity>
+        ) : (
+          <View style={styles.markAllButton} />
         )}
       </View>
 
@@ -162,17 +169,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING.xs,
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
+  backButton: {
+    width: 36,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   title: {
     fontSize: 16,
     fontWeight: "600",
     color: COLORS.text,
+    flex: 1,
+    textAlign: "center",
   },
   markAllButton: {
     flexDirection: "row",

@@ -39,7 +39,6 @@ import { AdminHeader } from "@/components/layout/AdminHeader";
 import {
   getSebayatPendingTickets,
   getSebayatTodayTickets,
-  getTicketTimeRemaining,
   isTicketExpired,
 } from "@/services/entryService";
 import {
@@ -310,12 +309,6 @@ export default function HomeScreen() {
     getActiveGumastasBySebayat(registration.id).then(setGumastas).catch(() => {});
   }, [registration?.id]);
 
-  const [tickTock, setTickTock] = useState(0);
-  useEffect(() => {
-    const interval = setInterval(() => setTickTock((n) => n + 1), 30000);
-    return () => clearInterval(interval);
-  }, []);
-
   const realtimeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -419,16 +412,6 @@ export default function HomeScreen() {
 
   const handleSelectEntryMode = (mode: EntryMode) => {
     setSelectedEntryMode(mode);
-  };
-
-  const formatTimeRemaining = (ticket: GateEntry) => {
-    const remaining = getTicketTimeRemaining(ticket);
-    if (remaining <= 0) return t("app.home.expired");
-    const minutes = Math.floor(remaining / 60000);
-    if (minutes < 60) return t("app.home.minutesLeft", { minutes });
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return t("app.home.hoursLeft", { hours, mins });
   };
 
   const getStatusColor = (status: string) => {
@@ -1033,11 +1016,6 @@ export default function HomeScreen() {
                   <Text style={styles.ticketDevoteesLarge}>
                     {ln(createdTicket.declared_devotee_count)} {createdTicket.declared_devotee_count > 1 ? t("app.home.devotees") : t("app.home.devotee")}
                   </Text>
-                  {createdTicket.expires_at && (
-                    <Text style={styles.ticketExpiry}>
-                      {t("app.home.validUntil", { time: new Date(createdTicket.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}
-                    </Text>
-                  )}
                 </View>
               </>
             )}

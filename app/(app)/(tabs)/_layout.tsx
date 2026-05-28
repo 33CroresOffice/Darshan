@@ -34,19 +34,18 @@ export default function AppTabsLayout() {
             borderTopWidth: 1,
             borderTopColor: COLORS.border,
             backgroundColor: COLORS.surface,
-            paddingTop: 6,
+            paddingTop: 8,
             paddingBottom: bottomPad,
-            height: 60 + bottomPad,
+            height: 68 + bottomPad,
             paddingHorizontal: 4,
           },
           tabBarLabelStyle: {
             fontSize: 10,
             fontWeight: "500",
             marginTop: 2,
-            flexShrink: 1,
           },
           tabBarItemStyle: {
-            paddingVertical: 4,
+            paddingVertical: 2,
           },
           tabBarIconStyle: {
             marginBottom: 0,

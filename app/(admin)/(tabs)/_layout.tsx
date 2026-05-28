@@ -98,9 +98,9 @@ export default function AdminTabsLayout() {
             borderTopWidth: 1,
             borderTopColor: COLORS.border,
             backgroundColor: COLORS.surface,
-            paddingTop: 6,
+            paddingTop: 8,
             paddingBottom: bottomPad,
-            height: 60 + bottomPad,
+            height: 68 + bottomPad,
             paddingHorizontal: 4,
           },
           tabBarLabelStyle: {

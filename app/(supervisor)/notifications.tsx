@@ -1,12 +1,17 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Bell } from "lucide-react-native";
+import { Bell, ArrowLeft } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import { COLORS, SPACING } from "@/constants/config";
 
 export default function SupervisorNotificationsScreen() {
+  const router = useRouter();
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <ArrowLeft size={22} color={COLORS.text} />
+        </TouchableOpacity>
         <Text style={styles.title}>Notifications</Text>
       </View>
 
@@ -31,14 +36,25 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
-    backgroundColor: COLORS.background,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: SPACING.sm,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "600",
     color: COLORS.text,
   },
   content: {
