@@ -81,7 +81,6 @@ import type { Category, DarshanSlot } from "@/types";
 
 export default function SettingsScreen() {
   const { profile } = useAuth();
-  const tabBarHeight = 0;
   const isSuperAdmin = profile?.role === "superadmin";
 
   const [maxDevotees, setMaxDevotees] = useState("");
@@ -612,7 +611,7 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerSection}>
@@ -1701,6 +1700,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    paddingBottom: 40,
   },
   headerSection: {
     marginBottom: 20,

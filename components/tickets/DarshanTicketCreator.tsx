@@ -16,6 +16,7 @@ import {
   Minus,
   Check,
   X,
+  Clock,
   CircleAlert as AlertCircle,
   ChevronDown,
   ChevronUp,
@@ -30,6 +31,7 @@ import {
   getSebayatDailyQuota,
   getSebayatPendingTickets,
   updateDarshanTicketCountByStaff,
+  getTicketTimeRemaining,
   isTicketExpired,
 } from "@/services/entryService";
 import {
@@ -232,6 +234,16 @@ export function DarshanTicketCreator({
     setSavingCount(false);
   };
 
+  const formatTimeRemaining = (ticket: GateEntry) => {
+    const remaining = getTicketTimeRemaining(ticket);
+    if (remaining <= 0) return t("supervisor.darshanTickets.expired");
+    const minutes = Math.floor(remaining / 60000);
+    if (minutes < 60) return t("supervisor.darshanTickets.minutesLeft", { minutes: ln(minutes) });
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return t("supervisor.darshanTickets.hoursLeft", { hours: ln(hours), mins: ln(mins) });
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending": return COLORS.warning;
@@ -413,9 +425,16 @@ export function DarshanTicketCreator({
                       <Text style={styles.ticketDevotees}>
                         {ln(ticket.declared_devotee_count)} {ticket.declared_devotee_count > 1 ? t("supervisor.darshanTickets.devotees") : t("supervisor.darshanTickets.devotee")}
                       </Text>
-                      {ticket.entry_mode === "marjana_mandap" && (
+                      {ticket.entry_mode === "marjana_mandap" ? (
                         <View style={styles.innerGateBadge}>
                           <Text style={styles.innerGateBadgeText}>{t("supervisor.darshanTickets.innerGateBadge")}</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.ticketTimeRow}>
+                          <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
+                          <Text style={[styles.ticketTime, expired && styles.ticketTimeExpired]}>
+                            {formatTimeRemaining(ticket)}
+                          </Text>
                         </View>
                       )}
                     </View>
@@ -571,6 +590,11 @@ export function DarshanTicketCreator({
                     <Text style={styles.ticketDevoteesLarge}>
                       {ln(createdTicket.declared_devotee_count)} {createdTicket.declared_devotee_count > 1 ? t("supervisor.darshanTickets.devotees") : t("supervisor.darshanTickets.devotee")}
                     </Text>
+                    {createdTicket.expires_at && (
+                      <Text style={styles.ticketExpiry}>
+                        {t("supervisor.darshanTickets.validUntil", { time: new Date(createdTicket.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}
+                      </Text>
+                    )}
                   </View>
                 </>
               )}
@@ -791,9 +815,16 @@ export function DarshanTicketCreator({
                     <Text style={styles.ticketDevotees}>
                       {ln(ticket.declared_devotee_count)} {ticket.declared_devotee_count > 1 ? t("supervisor.darshanTickets.devotees") : t("supervisor.darshanTickets.devotee")}
                     </Text>
-                    {ticket.entry_mode === "marjana_mandap" && (
+                    {ticket.entry_mode === "marjana_mandap" ? (
                       <View style={styles.innerGateBadge}>
                         <Text style={styles.innerGateBadgeText}>Inner Gate</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.ticketTimeRow}>
+                        <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
+                        <Text style={[styles.ticketTime, expired && styles.ticketTimeExpired]}>
+                          {formatTimeRemaining(ticket)}
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -1007,6 +1038,11 @@ export function DarshanTicketCreator({
                   <Text style={styles.ticketDevoteesLarge}>
                     {ln(createdTicket.declared_devotee_count)} {createdTicket.declared_devotee_count > 1 ? t("supervisor.darshanTickets.devotees") : t("supervisor.darshanTickets.devotee")}
                   </Text>
+                  {createdTicket.expires_at && (
+                    <Text style={styles.ticketExpiry}>
+                      {t("supervisor.darshanTickets.validUntil", { time: new Date(createdTicket.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}
+                    </Text>
+                  )}
                 </View>
               </>
             )}
@@ -1047,6 +1083,12 @@ export function DarshanTicketCreator({
                   <Text style={styles.ticketDevoteesLarge}>
                     {ln(selectedTicket.declared_devotee_count)} {selectedTicket.declared_devotee_count > 1 ? t("supervisor.darshanTickets.devotees") : t("supervisor.darshanTickets.devotee")}
                   </Text>
+                  <View style={styles.ticketTimeRow}>
+                    <Clock size={14} color={isTicketExpired(selectedTicket) ? COLORS.error : COLORS.warning} />
+                    <Text style={[styles.ticketExpiry, isTicketExpired(selectedTicket) && { color: COLORS.error }]}>
+                      {formatTimeRemaining(selectedTicket)}
+                    </Text>
+                  </View>
                 </View>
 
                 {printTokenEnabled && staffMode && (

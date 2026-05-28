@@ -134,7 +134,6 @@ export async function submitRegistration(
     temple_id_card_url: idProofUrl,
     photo_url: photoUrl,
     category_ids: formData.categoryIds.length > 0 ? formData.categoryIds : null,
-    category_id: formData.categoryIds.length > 0 ? formData.categoryIds[0] : null,
   };
 
   const { data, error } = await supabase
@@ -181,7 +180,6 @@ export async function resubmitRegistration(
     temple_health_card_id: formData.templeHealthCardId || null,
     temple_id_card_number: formData.templeIdCardNumber || null,
     category_ids: formData.categoryIds.length > 0 ? formData.categoryIds : null,
-    category_id: formData.categoryIds.length > 0 ? formData.categoryIds[0] : null,
     approval_status: "pending",
     rejection_reason: null,
     rejection_type: null,

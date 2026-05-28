@@ -54,6 +54,7 @@ import {
   getEntryByCode,
   searchEntryByQR,
   isTicketExpired,
+  getTicketTimeRemaining,
   verifyInnerGateEntry,
   flagEntryDiscrepancy,
   getPendingVerifications,
@@ -507,6 +508,16 @@ export default function GateManagementScreen() {
     }
   };
 
+  const formatTimeRemaining = (entry: GateEntry) => {
+    const remaining = getTicketTimeRemaining(entry);
+    if (remaining <= 0) return "Expired";
+    const minutes = Math.floor(remaining / 60000);
+    if (minutes < 60) return `${minutes}m left`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
+  };
+
   const filteredHistoryEntries =
     historyFilter === "all"
       ? historyEntries
@@ -685,6 +696,12 @@ export default function GateManagementScreen() {
                     </View>
                     <View style={styles.pendingRight}>
                       <Text style={styles.pendingCode}>{ticket.entry_code}</Text>
+                      <View style={[styles.pendingTimeRow, expired && styles.pendingTimeExpired]}>
+                        <Clock size={12} color={expired ? COLORS.error : COLORS.warning} />
+                        <Text style={[styles.pendingTime, expired && { color: COLORS.error }]}>
+                          {formatTimeRemaining(ticket)}
+                        </Text>
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -814,6 +831,12 @@ export default function GateManagementScreen() {
                 <Users size={20} color={COLORS.primary} />
                 <Text style={styles.acknowledgeDetailValue}>{selectedEntry.declared_devotee_count}</Text>
                 <Text style={styles.acknowledgeDetailLabel}>Devotees</Text>
+              </View>
+              <View style={styles.acknowledgeDetailDivider} />
+              <View style={styles.acknowledgeDetailItem}>
+                <Clock size={20} color={COLORS.warning} />
+                <Text style={styles.acknowledgeDetailValue}>{formatTimeRemaining(selectedEntry)}</Text>
+                <Text style={styles.acknowledgeDetailLabel}>Remaining</Text>
               </View>
             </View>
 
