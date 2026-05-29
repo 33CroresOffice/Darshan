@@ -877,7 +877,7 @@ export async function cancelDarshanTicket(
 ): Promise<{ success: boolean; message: string }> {
   const { data: entry, error: fetchError } = await supabase
     .from("gate_entries")
-    .select("id, status, sebayat_id")
+    .select("id, status, sebayat_id, entry_mode")
     .eq("id", entryId)
     .maybeSingle();
 
@@ -889,8 +889,13 @@ export async function cancelDarshanTicket(
     return { success: false, message: "Not authorized to cancel this ticket" };
   }
 
-  if (entry.status !== "pending") {
-    return { success: false, message: "Only pending tickets can be cancelled" };
+  const isMarjanaMandap = entry.entry_mode === "marjana_mandap";
+  const cancellable =
+    entry.status === "pending" ||
+    (isMarjanaMandap && entry.status === "registered");
+
+  if (!cancellable) {
+    return { success: false, message: "This ticket can no longer be cancelled" };
   }
 
   const { error } = await supabase

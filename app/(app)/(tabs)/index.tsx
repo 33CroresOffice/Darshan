@@ -127,6 +127,7 @@ export default function HomeScreen() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createdTicket, setCreatedTicket] = useState<GateEntry | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [confirmCancelTicket, setConfirmCancelTicket] = useState<GateEntry | null>(null);
   const [slotQuotas, setSlotQuotas] = useState<SlotQuota[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [showSlots, setShowSlots] = useState(false);
@@ -389,17 +390,19 @@ export default function HomeScreen() {
     setCreating(false);
   };
 
-  const handleCancelTicket = async (ticketId: string) => {
-    if (!registration?.id) return;
-    setCancelling(ticketId);
-
+  const handleCancelTicket = (ticketId: string) => {
     const ticket = [...pendingTickets, ...todayTickets].find((t) => t.id === ticketId);
+    if (ticket) setConfirmCancelTicket(ticket);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!registration?.id || !confirmCancelTicket) return;
+    setCancelling(confirmCancelTicket.id);
+    setConfirmCancelTicket(null);
     try {
-      if (ticket) {
-        const result = await cancelTicketResilient(ticket, registration.id);
-        if (result.success) {
-          await Promise.all([loadQuota(), loadTickets()]);
-        }
+      const result = await cancelTicketResilient(confirmCancelTicket, registration.id);
+      if (result.success) {
+        await Promise.all([loadQuota(), loadTickets()]);
       }
     } catch {}
     setCancelling(null);
@@ -706,7 +709,7 @@ export default function HomeScreen() {
                       ) : null}
                     </View>
                   </View>
-                  {!isRegistered && (
+                  {(ticket.status === "pending" || (isInnerGate && ticket.status === "registered")) && (
                     <TouchableOpacity
                       style={styles.cancelButton}
                       onPress={(e) => {
@@ -1060,13 +1063,13 @@ export default function HomeScreen() {
                     </Text>
                   </View>
 
-                  {selectedTicket.status !== "registered" && (
+                  {(selectedTicket.status === "pending" || (selectedTicket.entry_mode === "marjana_mandap" && selectedTicket.status === "registered")) && (
                     <TouchableOpacity
                       style={styles.cancelTicketButton}
                       onPress={() => {
-                        handleCancelTicket(selectedTicket.id);
                         setShowTicketModal(false);
                         setSelectedTicket(null);
+                        handleCancelTicket(selectedTicket.id);
                       }}
                     >
                       <X size={18} color={COLORS.error} />
@@ -1079,6 +1082,38 @@ export default function HomeScreen() {
           </View>
         </Modal>
       )}
+
+      <Modal visible={!!confirmCancelTicket} transparent animationType="fade">
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmModal}>
+            <View style={styles.confirmIconWrap}>
+              <X size={28} color={COLORS.error} />
+            </View>
+            <Text style={styles.confirmTitle}>Cancel Ticket?</Text>
+            <Text style={styles.confirmBody}>
+              This will cancel ticket{" "}
+              <Text style={styles.confirmCode}>{confirmCancelTicket?.entry_code}</Text>
+              {" "}for{" "}
+              <Text style={styles.confirmCode}>{confirmCancelTicket?.declared_devotee_count}</Text>
+              {" "}devotee{(confirmCancelTicket?.declared_devotee_count ?? 1) > 1 ? "s" : ""}.{"\n"}This action cannot be undone.
+            </Text>
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={styles.confirmBtnKeep}
+                onPress={() => setConfirmCancelTicket(null)}
+              >
+                <Text style={styles.confirmBtnKeepText}>Keep Ticket</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmBtnCancel}
+                onPress={handleConfirmCancel}
+              >
+                <Text style={styles.confirmBtnCancelText}>Yes, Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
     </SafeAreaView>
   );
@@ -2110,5 +2145,77 @@ const styles = StyleSheet.create({
     color: "#0891b2",
     textTransform: "uppercase",
     letterSpacing: 1,
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.xl,
+  },
+  confirmModal: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    width: "100%",
+    maxWidth: 340,
+    alignItems: "center",
+  },
+  confirmIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.error + "18",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: SPACING.md,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  confirmBody: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: SPACING.lg,
+  },
+  confirmCode: {
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  confirmButtons: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    width: "100%",
+  },
+  confirmBtnKeep: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: "center",
+    backgroundColor: COLORS.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  confirmBtnKeepText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  confirmBtnCancel: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: "center",
+    backgroundColor: COLORS.error,
+  },
+  confirmBtnCancelText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#fff",
   },
 });

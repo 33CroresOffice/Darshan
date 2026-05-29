@@ -35,7 +35,6 @@ import {
 import {
   createTicketResilient,
   createTicketForStaffResilient,
-  cancelTicketResilient,
   editTicketCountResilient,
   getTodayTicketsResilient,
   getEffectiveQuota,
@@ -77,11 +76,9 @@ export function DarshanTicketCreator({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createdTicket, setCreatedTicket] = useState<GateEntry | null>(null);
-  const [cancelling, setCancelling] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [selectedEntryMode, setSelectedEntryMode] = useState<EntryMode>("west_gate");
-  const [confirmCancelTicket, setConfirmCancelTicket] = useState<GateEntry | null>(null);
   const [editCountTicket, setEditCountTicket] = useState<GateEntry | null>(null);
   const [editCount, setEditCount] = useState(1);
   const [editCountError, setEditCountError] = useState<string | null>(null);
@@ -186,26 +183,6 @@ export function DarshanTicketCreator({
       setCreateError(result.message);
     }
     setCreating(false);
-  };
-
-  const handleCancelTicket = (ticket: GateEntry) => {
-    setConfirmCancelTicket(ticket);
-  };
-
-  const handleConfirmCancel = async () => {
-    if (!sebayatRegistrationId || !confirmCancelTicket) return;
-    setCancelling(confirmCancelTicket.id);
-    setConfirmCancelTicket(null);
-
-    const result = await cancelTicketResilient(confirmCancelTicket, sebayatRegistrationId);
-    if (result.success) {
-      await loadData();
-      if (showTicketModal && selectedTicket?.id === confirmCancelTicket.id) {
-        setShowTicketModal(false);
-        setSelectedTicket(null);
-      }
-    }
-    setCancelling(null);
   };
 
   const handleOpenEditCount = (ticket: GateEntry) => {
@@ -810,20 +787,6 @@ export function DarshanTicketCreator({
                       <Pencil size={15} color={COLORS.primary} />
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleCancelTicket(ticket);
-                    }}
-                    disabled={cancelling === ticket.id}
-                  >
-                    {cancelling === ticket.id ? (
-                      <ActivityIndicator size="small" color={COLORS.error} />
-                    ) : (
-                      <X size={18} color={COLORS.error} />
-                    )}
-                  </TouchableOpacity>
                 </View>
               </TouchableOpacity>
             );
@@ -1093,54 +1056,9 @@ export function DarshanTicketCreator({
                       <Text style={styles.editCountTicketText}>Edit Count</Text>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity
-                    style={styles.cancelTicketButton}
-                    onPress={() => {
-                      setShowTicketModal(false);
-                      setSelectedTicket(null);
-                      handleCancelTicket(selectedTicket);
-                    }}
-                  >
-                    <X size={18} color={COLORS.error} />
-                    <Text style={styles.cancelTicketText}>{t("supervisor.darshanTickets.cancelTicket")}</Text>
-                  </TouchableOpacity>
                 </View>
               </>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Cancel confirmation modal */}
-      <Modal visible={!!confirmCancelTicket} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.confirmModal}>
-            <View style={styles.confirmIconContainer}>
-              <X size={28} color={COLORS.error} />
-            </View>
-            <Text style={styles.confirmTitle}>Cancel Ticket?</Text>
-            <Text style={styles.confirmBody}>
-              This will cancel ticket{" "}
-              <Text style={styles.confirmCode}>{confirmCancelTicket?.entry_code}</Text>
-              {" "}for{" "}
-              <Text style={styles.confirmCode}>{confirmCancelTicket?.declared_devotee_count}</Text>
-              {" "}devotee{(confirmCancelTicket?.declared_devotee_count ?? 1) > 1 ? "s" : ""}.
-              {"\n"}This action cannot be undone.
-            </Text>
-            <View style={styles.confirmButtons}>
-              <TouchableOpacity
-                style={styles.confirmBtnCancel}
-                onPress={() => setConfirmCancelTicket(null)}
-              >
-                <Text style={styles.confirmBtnCancelText}>Keep Ticket</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmBtnConfirm}
-                onPress={handleConfirmCancel}
-              >
-                <Text style={styles.confirmBtnConfirmText}>Yes, Cancel</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>
@@ -1567,14 +1485,6 @@ const styles = StyleSheet.create({
   ticketTimeExpired: {
     color: COLORS.error,
   },
-  cancelButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.error + "15",
-    justifyContent: "center",
-    alignItems: "center",
-  },
   historyCard: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.md,
@@ -1809,21 +1719,6 @@ const styles = StyleSheet.create({
     maxWidth: 340,
     alignItems: "center",
   },
-  cancelTicketButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.error + "15",
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.sm,
-  },
-  cancelTicketText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.error,
-  },
   entryModeContainer: {
     width: "100%",
     marginBottom: SPACING.md,
@@ -1992,70 +1887,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: COLORS.primary,
-  },
-  confirmModal: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    width: "100%",
-    maxWidth: 340,
-    alignItems: "center",
-  },
-  confirmIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.error + "15",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: SPACING.md,
-  },
-  confirmTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  confirmBody: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: SPACING.xl,
-  },
-  confirmCode: {
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  confirmButtons: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    width: "100%",
-  },
-  confirmBtnCancel: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.md,
-    alignItems: "center",
-    backgroundColor: COLORS.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  confirmBtnCancelText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  confirmBtnConfirm: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.md,
-    alignItems: "center",
-    backgroundColor: COLORS.error,
-  },
-  confirmBtnConfirmText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#fff",
   },
 });
